@@ -25,6 +25,7 @@ type AgentEventState = {
   seqByRun: Map<string, number>;
   listeners: Set<(evt: AgentEventPayload) => void>;
   runContextById: Map<string, AgentRunContext>;
+  latestRunIdBySessionKey: Map<string, string>;
 };
 
 const AGENT_EVENT_STATE_KEY = Symbol.for("openclaw.agentEvents.state");
@@ -33,11 +34,15 @@ const state = resolveGlobalSingleton<AgentEventState>(AGENT_EVENT_STATE_KEY, () 
   seqByRun: new Map<string, number>(),
   listeners: new Set<(evt: AgentEventPayload) => void>(),
   runContextById: new Map<string, AgentRunContext>(),
+  latestRunIdBySessionKey: new Map<string, string>(),
 }));
 
 export function registerAgentRunContext(runId: string, context: AgentRunContext) {
   if (!runId) {
     return;
+  }
+  if (context.sessionKey?.trim()) {
+    state.latestRunIdBySessionKey.set(context.sessionKey.trim(), runId);
   }
   const existing = state.runContextById.get(runId);
   if (!existing) {
@@ -62,12 +67,28 @@ export function getAgentRunContext(runId: string) {
   return state.runContextById.get(runId);
 }
 
+export function getLatestRunIdForSessionKey(sessionKey: string | undefined) {
+  const normalized = sessionKey?.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  return state.latestRunIdBySessionKey.get(normalized);
+}
+
 export function clearAgentRunContext(runId: string) {
+  const existing = state.runContextById.get(runId);
   state.runContextById.delete(runId);
+  if (
+    existing?.sessionKey?.trim() &&
+    state.latestRunIdBySessionKey.get(existing.sessionKey.trim()) === runId
+  ) {
+    state.latestRunIdBySessionKey.delete(existing.sessionKey.trim());
+  }
 }
 
 export function resetAgentRunContextForTest() {
   state.runContextById.clear();
+  state.latestRunIdBySessionKey.clear();
 }
 
 export function emitAgentEvent(event: Omit<AgentEventPayload, "seq" | "ts">) {
@@ -95,4 +116,5 @@ export function resetAgentEventsForTest() {
   state.seqByRun.clear();
   state.listeners.clear();
   state.runContextById.clear();
+  state.latestRunIdBySessionKey.clear();
 }

@@ -6,11 +6,15 @@ import {
 import {
   applyReplayBootstrapToPage,
   buildBrowserReplayBootstrap,
+  ensureReplayCaptureForPage,
   getReplayMappingForSessionKey,
   registerReplayContextForTarget,
 } from "../replay.js";
 import { readReplayContextFromBrowserRequest } from "../replay.request.js";
-import { setManagedBrowserReplayContext } from "../runtime-registry.js";
+import {
+  getManagedBrowserReplayContext,
+  setManagedBrowserReplayContext,
+} from "../runtime-registry.js";
 import type { BrowserRouteContext, ProfileContext } from "../server-context.js";
 import { getPwAiModule } from "./agent.shared.js";
 import type { BrowserRequest, BrowserResponse, BrowserRouteRegistrar } from "./types.js";
@@ -159,10 +163,12 @@ export function registerBrowserTabRoutes(app: BrowserRouteRegistrar, ctx: Browse
             : null;
         const replayBootstrap = buildBrowserReplayBootstrap(replayRequestContext);
         if (replayBootstrap) {
+          const currentReplayRuntime = getManagedBrowserReplayContext(profileCtx.profile.cdpUrl);
           const existingMapping = replayConfig.persistMappings
             ? await getReplayMappingForSessionKey(replayBootstrap.sessionKey)
             : null;
           setManagedBrowserReplayContext({
+            ...currentReplayRuntime,
             cdpUrl: profileCtx.profile.cdpUrl,
             profile: profileCtx.profile.name,
             sessionKey: replayBootstrap.sessionKey,
@@ -178,6 +184,11 @@ export function registerBrowserTabRoutes(app: BrowserRouteRegistrar, ctx: Browse
             profileName: profileCtx.profile.name,
             targetId: tab.targetId,
             context: replayBootstrap,
+            uploadConfig: {
+              serverUrl: currentReplayRuntime?.replayServerUrl,
+              publicKey: currentReplayRuntime?.replayPublicKey,
+              rrwebCdnUrl: currentReplayRuntime?.replayRrwebCdnUrl,
+            },
           });
           if (replayConfig.injectCorrelation) {
             const pw = await getPwAiModule();
@@ -189,6 +200,11 @@ export function registerBrowserTabRoutes(app: BrowserRouteRegistrar, ctx: Browse
                 await applyReplayBootstrapToPage({ page, bootstrap: replayBootstrap }).catch(
                   () => undefined,
                 );
+                await ensureReplayCaptureForPage({
+                  page,
+                  profileName: profileCtx.profile.name,
+                  targetId: tab.targetId,
+                }).catch(() => undefined);
               }
             }
           }

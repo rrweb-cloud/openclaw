@@ -5,11 +5,15 @@ import {
   applyReplayBootstrapToPage,
   buildBrowserReplayBootstrap,
   collectAndPersistReplaySession,
+  ensureReplayCaptureForPage,
   getReplayMappingForSessionKey,
   registerReplayContextForTarget,
 } from "../replay.js";
 import { readReplayContextFromBrowserRequest } from "../replay.request.js";
-import { setManagedBrowserReplayContext } from "../runtime-registry.js";
+import {
+  getManagedBrowserReplayContext,
+  setManagedBrowserReplayContext,
+} from "../runtime-registry.js";
 import type { BrowserRouteContext, ProfileContext } from "../server-context.js";
 import type { BrowserRequest, BrowserResponse } from "./types.js";
 import { getProfileContext, jsonError } from "./utils.js";
@@ -163,10 +167,12 @@ export async function withPlaywrightRouteContext<T>(
           : null;
       const replayBootstrap = buildBrowserReplayBootstrap(replayRequestContext);
       if (replayBootstrap) {
+        const currentReplayRuntime = getManagedBrowserReplayContext(cdpUrl);
         const existingMapping = replayConfig.persistMappings
           ? await getReplayMappingForSessionKey(replayBootstrap.sessionKey)
           : null;
         setManagedBrowserReplayContext({
+          ...currentReplayRuntime,
           cdpUrl,
           profile: profileCtx.profile.name,
           sessionKey: replayBootstrap.sessionKey,
@@ -182,12 +188,22 @@ export async function withPlaywrightRouteContext<T>(
           profileName: profileCtx.profile.name,
           targetId: tab.targetId,
           context: replayBootstrap,
+          uploadConfig: {
+            serverUrl: currentReplayRuntime?.replayServerUrl,
+            publicKey: currentReplayRuntime?.replayPublicKey,
+            rrwebCdnUrl: currentReplayRuntime?.replayRrwebCdnUrl,
+          },
         });
         if (replayConfig.injectCorrelation) {
           const page = await pw.getPageForTargetId({ cdpUrl, targetId: tab.targetId });
           await applyReplayBootstrapToPage({ page, bootstrap: replayBootstrap }).catch(
             () => undefined,
           );
+          await ensureReplayCaptureForPage({
+            page,
+            profileName: profileCtx.profile.name,
+            targetId: tab.targetId,
+          }).catch(() => undefined);
         }
       }
       const result = await params.run({ profileCtx, tab, cdpUrl, pw });
@@ -203,6 +219,7 @@ export async function withPlaywrightRouteContext<T>(
           }).catch(() => null);
           if (mapping) {
             setManagedBrowserReplayContext({
+              ...getManagedBrowserReplayContext(cdpUrl),
               cdpUrl,
               profile: profileCtx.profile.name,
               sessionKey: mapping.sessionKey,

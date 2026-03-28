@@ -4,6 +4,7 @@ import { browserSnapshot, browserTabs } from "../../browser/client.js";
 import { resolveBrowserConfig, resolveProfile } from "../../browser/config.js";
 import { DEFAULT_AI_SNAPSHOT_MAX_CHARS } from "../../browser/constants.js";
 import { getBrowserProfileCapabilities } from "../../browser/profile-capabilities.js";
+import type { BrowserReplayRequestContext } from "../../browser/replay.js";
 import { loadConfig } from "../../config/config.js";
 import { wrapExternalContent } from "../../security/external-content.js";
 import { imageResultFromFile, jsonResult } from "./common.js";
@@ -151,8 +152,9 @@ export async function executeTabsAction(params: {
   baseUrl?: string;
   profile?: string;
   proxyRequest: BrowserProxyRequest | null;
+  replayContext?: BrowserReplayRequestContext | null;
 }): Promise<AgentToolResult<unknown>> {
-  const { baseUrl, profile, proxyRequest } = params;
+  const { baseUrl, profile, proxyRequest, replayContext } = params;
   if (proxyRequest) {
     const result = await proxyRequest({
       method: "GET",
@@ -162,7 +164,7 @@ export async function executeTabsAction(params: {
     const tabs = (result as { tabs?: unknown[] }).tabs ?? [];
     return formatTabsToolResult(tabs);
   }
-  const tabs = await browserToolActionDeps.browserTabs(baseUrl, { profile });
+  const tabs = await browserToolActionDeps.browserTabs(baseUrl, { profile, replayContext });
   return formatTabsToolResult(tabs);
 }
 
@@ -171,8 +173,9 @@ export async function executeSnapshotAction(params: {
   baseUrl?: string;
   profile?: string;
   proxyRequest: BrowserProxyRequest | null;
+  replayContext?: BrowserReplayRequestContext | null;
 }): Promise<AgentToolResult<unknown>> {
-  const { input, baseUrl, profile, proxyRequest } = params;
+  const { input, baseUrl, profile, proxyRequest, replayContext } = params;
   const snapshotDefaults = browserToolActionDeps.loadConfig().browser?.snapshotDefaults;
   const format: "ai" | "aria" | undefined =
     input.snapshotFormat === "ai" || input.snapshotFormat === "aria"
@@ -235,6 +238,7 @@ export async function executeSnapshotAction(params: {
     : await browserToolActionDeps.browserSnapshot(baseUrl, {
         ...snapshotQuery,
         profile,
+        replayContext,
       });
   if (snapshot.format === "ai") {
     const extractedText = snapshot.snapshot ?? "";
@@ -306,8 +310,9 @@ export async function executeConsoleAction(params: {
   baseUrl?: string;
   profile?: string;
   proxyRequest: BrowserProxyRequest | null;
+  replayContext?: BrowserReplayRequestContext | null;
 }): Promise<AgentToolResult<unknown>> {
-  const { input, baseUrl, profile, proxyRequest } = params;
+  const { input, baseUrl, profile, proxyRequest, replayContext } = params;
   const level = typeof input.level === "string" ? input.level.trim() : undefined;
   const targetId = typeof input.targetId === "string" ? input.targetId.trim() : undefined;
   if (proxyRequest) {
@@ -326,6 +331,7 @@ export async function executeConsoleAction(params: {
     level,
     targetId,
     profile,
+    replayContext,
   });
   return formatConsoleToolResult(result);
 }
@@ -335,8 +341,9 @@ export async function executeActAction(params: {
   baseUrl?: string;
   profile?: string;
   proxyRequest: BrowserProxyRequest | null;
+  replayContext?: BrowserReplayRequestContext | null;
 }): Promise<AgentToolResult<unknown>> {
-  const { request, baseUrl, profile, proxyRequest } = params;
+  const { request, baseUrl, profile, proxyRequest, replayContext } = params;
   try {
     const result = proxyRequest
       ? await proxyRequest({
@@ -347,6 +354,7 @@ export async function executeActAction(params: {
         })
       : await browserToolActionDeps.browserAct(baseUrl, request, {
           profile,
+          replayContext,
         });
     return jsonResult(result);
   } catch (err) {
@@ -360,7 +368,9 @@ export async function executeActAction(params: {
               profile,
             })) as { tabs?: unknown[] }
           ).tabs ?? [])
-        : await browserToolActionDeps.browserTabs(baseUrl, { profile }).catch(() => []);
+        : await browserToolActionDeps
+            .browserTabs(baseUrl, { profile, replayContext })
+            .catch(() => []);
       // Some user-browser targetIds can go stale between snapshots and actions.
       // Only retry safe read-only actions, and only when exactly one tab remains attached.
       if (retryRequest && canRetryChromeActWithoutTargetId(request) && tabs.length === 1) {
@@ -374,6 +384,7 @@ export async function executeActAction(params: {
               })
             : await browserToolActionDeps.browserAct(baseUrl, retryRequest, {
                 profile,
+                replayContext,
               });
           return jsonResult(retryResult);
         } catch {

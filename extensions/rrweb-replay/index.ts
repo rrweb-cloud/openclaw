@@ -2,9 +2,12 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Type } from "@sinclair/typebox";
-import { readJsonFileWithFallback, writeJsonFileAtomically } from "openclaw/plugin-sdk/json-store";
-import { definePluginEntry, type OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
-import { type AnyAgentTool, type OpenClawConfig } from "openclaw/plugin-sdk/plugin-entry";
+import {
+  definePluginEntry,
+  type AnyAgentTool,
+  type OpenClawConfig,
+  type OpenClawPluginApi,
+} from "openclaw/plugin-sdk/plugin-entry";
 
 type RrwebReplayConfig = {
   enabled: boolean;
@@ -39,6 +42,7 @@ type ReplayStateStore = {
 
 const RRWEB_PLUGIN_ID = "rrweb-replay";
 const DEFAULT_RRWEB_API_BASE_URL = "https://api.rrwebcloud.com";
+const DEFAULT_RRWEB_CDN_URL = "https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js";
 const LEGACY_BROWSER_RUNTIME_REASON =
   "This OpenClaw host does not export plugin-sdk/browser-runtime. Automatic rrweb extension wiring requires OpenClaw >=2026.3.24. On legacy hosts, install/configure the rrweb browser addon separately or upgrade OpenClaw.";
 
@@ -57,6 +61,8 @@ type BrowserRuntimeCompat = {
     replaySessionId: string;
     replayServerUrl?: string;
     replayUrl?: string;
+    replayPublicKey?: string;
+    replayRrwebCdnUrl?: string;
     updatedAt: string;
   }) => void;
   unregisterManagedBrowserExtensions: (sourceId: string) => void;
@@ -187,15 +193,44 @@ function resolvePluginStateFile(api: OpenClawPluginApi): string {
   );
 }
 
+async function readJsonFileWithFallbackLocal<T>(
+  filePath: string,
+  fallback: T,
+): Promise<{ value: T; exists: boolean }> {
+  try {
+    const raw = await fs.promises.readFile(filePath, "utf8");
+    return { value: JSON.parse(raw) as T, exists: true };
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === "ENOENT") {
+      return { value: fallback, exists: false };
+    }
+    return { value: fallback, exists: false };
+  }
+}
+
+async function writeJsonFileAtomicallyLocal(filePath: string, value: unknown): Promise<void> {
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 }).catch(() => {
+    // Best-effort directory creation; write below will surface any real failure.
+  });
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`;
+  await fs.promises.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  await fs.promises.rename(tempPath, filePath);
+}
+
 async function loadReplayState(api: OpenClawPluginApi): Promise<ReplayStateStore> {
   const filePath = resolvePluginStateFile(api);
-  const { value } = await readJsonFileWithFallback<ReplayStateStore>(filePath, { sessions: {} });
+  const { value } = await readJsonFileWithFallbackLocal<ReplayStateStore>(filePath, {
+    sessions: {},
+  });
   return value;
 }
 
 async function saveReplayState(api: OpenClawPluginApi, state: ReplayStateStore): Promise<void> {
   const filePath = resolvePluginStateFile(api);
-  await writeJsonFileAtomically(filePath, state);
+  await writeJsonFileAtomicallyLocal(filePath, state);
 }
 
 function buildReplaySessionState(params: {
@@ -225,7 +260,6 @@ function buildReplaySessionState(params: {
 
 function describeReplayAvailability(params: {
   config: RrwebReplayConfig;
-  extensionDir: string | null;
   browserRuntimeAvailable: boolean;
 }): { enabled: boolean; reason?: string } {
   if (!params.config.enabled) {
@@ -235,12 +269,6 @@ function describeReplayAvailability(params: {
     return {
       enabled: false,
       reason: LEGACY_BROWSER_RUNTIME_REASON,
-    };
-  }
-  if (!params.extensionDir) {
-    return {
-      enabled: false,
-      reason: "Replay extension directory is missing. Check rrweb-replay.extensionMode/path.",
     };
   }
   const publicKey = resolveConfiguredSecret({
@@ -311,6 +339,13 @@ function resolveBrowserProfileForReplay(params: {
     return { name: profileName, cdpUrl: `http://127.0.0.1:${cdpPort}`, driver };
   }
   return { name: profileName, driver };
+}
+
+function resolveConfiguredPublicKey(config: RrwebReplayConfig): string | undefined {
+  return resolveConfiguredSecret({
+    value: config.publicKey,
+    envVarName: config.publicKeyEnvVar,
+  });
 }
 
 async function upsertReplaySession(params: {
@@ -425,6 +460,8 @@ async function armReplayContext(params: {
     replaySessionId: replayEntry.replaySessionId,
     replayServerUrl: replayEntry.replayServerUrl,
     replayUrl: replayEntry.replayUrl,
+    replayPublicKey: resolveConfiguredPublicKey(params.pluginConfig),
+    replayRrwebCdnUrl: DEFAULT_RRWEB_CDN_URL,
     updatedAt: new Date().toISOString(),
   });
   return await upsertReplaySession({
@@ -445,7 +482,6 @@ async function armReplayContext(params: {
 function createReplaySessionInfoTool(params: {
   api: OpenClawPluginApi;
   pluginConfig: RrwebReplayConfig;
-  extensionDir: string | null;
   browserRuntimePromise: Promise<BrowserRuntimeCompat | null>;
   context: {
     sessionKey?: string;
@@ -476,7 +512,6 @@ function createReplaySessionInfoTool(params: {
         rawParams && typeof rawParams === "object" ? (rawParams as Record<string, unknown>) : null;
       const availability = describeReplayAvailability({
         config: params.pluginConfig,
-        extensionDir: params.extensionDir,
         browserRuntimeAvailable: Boolean(browserRuntime),
       });
       const activate = toolParams?.activate === true;
@@ -530,7 +565,7 @@ function createReplaySessionInfoTool(params: {
   };
 }
 
-export default definePluginEntry({
+const rrwebReplayPlugin = {
   id: RRWEB_PLUGIN_ID,
   name: "rrweb Replay",
   description: "Portable rrweb replay bootstrap for OpenClaw-managed browsers.",
@@ -554,8 +589,8 @@ export default definePluginEntry({
           return;
         }
         if (!extensionDir) {
-          ctx.logger.warn(
-            "[rrweb-replay] extension directory missing; replay browser extension was not registered",
+          ctx.logger.info(
+            "[rrweb-replay] extension directory missing; continuing with runtime-side rrwebcloud upload only",
           );
           return;
         }
@@ -578,7 +613,6 @@ export default definePluginEntry({
       const browserRuntime = await browserRuntimePromise;
       const availability = describeReplayAvailability({
         config: pluginConfig,
-        extensionDir,
         browserRuntimeAvailable: Boolean(browserRuntime),
       });
       await upsertReplaySession({
@@ -621,7 +655,6 @@ export default definePluginEntry({
       const browserRuntime = await browserRuntimePromise;
       const availability = describeReplayAvailability({
         config: pluginConfig,
-        extensionDir,
         browserRuntimeAvailable: Boolean(browserRuntime),
       });
       if (event.toolName !== "browser" || pluginConfig.recordingPolicy !== "browser-only") {
@@ -649,7 +682,6 @@ export default definePluginEntry({
         createReplaySessionInfoTool({
           api,
           pluginConfig,
-          extensionDir,
           browserRuntimePromise,
           context: {
             sessionKey: context.sessionKey,
@@ -659,4 +691,6 @@ export default definePluginEntry({
       { name: "replay_session_info", optional: true },
     );
   },
-});
+};
+
+export default rrwebReplayPlugin;

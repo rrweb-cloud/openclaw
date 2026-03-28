@@ -18,6 +18,8 @@ export type BrowserReplayContext = {
   replaySessionId?: string;
   replayUrl?: string;
   replayServerUrl?: string;
+  replayPublicKey?: string;
+  replayRrwebCdnUrl?: string;
   updatedAt: string;
 };
 
@@ -119,7 +121,9 @@ export function setManagedBrowserReplayContext(context: BrowserReplayContext): v
   if (!cdpUrl) {
     throw new Error("Browser replay context requires a cdpUrl.");
   }
+  const existing = replayContextByCdpUrl.get(cdpUrl);
   replayContextByCdpUrl.set(cdpUrl, {
+    ...existing,
     ...context,
     cdpUrl,
     updatedAt: normalizeString(context.updatedAt) || new Date().toISOString(),

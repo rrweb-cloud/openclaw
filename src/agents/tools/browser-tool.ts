@@ -20,6 +20,11 @@ import { resolveBrowserConfig, resolveProfile } from "../../browser/config.js";
 import { DEFAULT_UPLOAD_DIR, resolveExistingPathsWithinRoot } from "../../browser/paths.js";
 import { getBrowserProfileCapabilities } from "../../browser/profile-capabilities.js";
 import { applyBrowserProxyPaths, persistBrowserProxyFiles } from "../../browser/proxy-files.js";
+import { resolveBrowserReplayRequestContext } from "../../browser/replay.js";
+import {
+  attachReplayContextToBody,
+  attachReplayContextToQuery,
+} from "../../browser/replay.request.js";
 import {
   trackSessionBrowserTab,
   untrackSessionBrowserTab,
@@ -421,6 +426,7 @@ export function createBrowserTool(opts?: {
       });
 
       const resolvedTarget = target === "node" ? undefined : target;
+      const replayContext = resolveBrowserReplayRequestContext(opts?.agentSessionKey);
       const baseUrl = nodeTarget
         ? undefined
         : resolveBrowserBaseUrl({
@@ -442,8 +448,11 @@ export function createBrowserTool(opts?: {
               nodeId: nodeTarget.nodeId,
               method: opts.method,
               path: opts.path,
-              query: opts.query,
-              body: opts.body,
+              query: attachReplayContextToQuery(opts.query, replayContext),
+              body:
+                opts.body && typeof opts.body === "object" && !Array.isArray(opts.body)
+                  ? attachReplayContextToBody(opts.body as Record<string, unknown>, replayContext)
+                  : opts.body,
               timeoutMs: opts.timeoutMs,
               profile: opts.profile,
             });
@@ -464,7 +473,9 @@ export function createBrowserTool(opts?: {
               }),
             );
           }
-          return jsonResult(await browserToolDeps.browserStatus(baseUrl, { profile }));
+          return jsonResult(
+            await browserToolDeps.browserStatus(baseUrl, { profile, replayContext }),
+          );
         case "start":
           if (proxyRequest) {
             await proxyRequest({
@@ -481,7 +492,9 @@ export function createBrowserTool(opts?: {
             );
           }
           await browserToolDeps.browserStart(baseUrl, { profile });
-          return jsonResult(await browserToolDeps.browserStatus(baseUrl, { profile }));
+          return jsonResult(
+            await browserToolDeps.browserStatus(baseUrl, { profile, replayContext }),
+          );
         case "stop":
           if (proxyRequest) {
             await proxyRequest({
@@ -498,7 +511,9 @@ export function createBrowserTool(opts?: {
             );
           }
           await browserToolDeps.browserStop(baseUrl, { profile });
-          return jsonResult(await browserToolDeps.browserStatus(baseUrl, { profile }));
+          return jsonResult(
+            await browserToolDeps.browserStatus(baseUrl, { profile, replayContext }),
+          );
         case "profiles":
           if (proxyRequest) {
             const result = await proxyRequest({
@@ -509,7 +524,7 @@ export function createBrowserTool(opts?: {
           }
           return jsonResult({ profiles: await browserToolDeps.browserProfiles(baseUrl) });
         case "tabs":
-          return await executeTabsAction({ baseUrl, profile, proxyRequest });
+          return await executeTabsAction({ baseUrl, profile, proxyRequest, replayContext });
         case "open": {
           const targetUrl = readTargetUrlParam(params);
           if (proxyRequest) {
@@ -521,7 +536,10 @@ export function createBrowserTool(opts?: {
             });
             return jsonResult(result);
           }
-          const opened = await browserToolDeps.browserOpenTab(baseUrl, targetUrl, { profile });
+          const opened = await browserToolDeps.browserOpenTab(baseUrl, targetUrl, {
+            profile,
+            replayContext,
+          });
           browserToolDeps.trackSessionBrowserTab({
             sessionKey: opts?.agentSessionKey,
             targetId: opened.targetId,
@@ -572,7 +590,11 @@ export function createBrowserTool(opts?: {
               profile,
             });
           } else {
-            await browserToolDeps.browserAct(baseUrl, { kind: "close" }, { profile });
+            await browserToolDeps.browserAct(
+              baseUrl,
+              { kind: "close" },
+              { profile, replayContext },
+            );
           }
           return jsonResult({ ok: true });
         }
@@ -582,6 +604,7 @@ export function createBrowserTool(opts?: {
             baseUrl,
             profile,
             proxyRequest,
+            replayContext,
           });
         case "screenshot": {
           const targetId = readStringParam(params, "targetId");
@@ -609,6 +632,7 @@ export function createBrowserTool(opts?: {
                 element,
                 type,
                 profile,
+                replayContext,
               });
           return await browserToolDeps.imageResultFromFile({
             label: "browser:screenshot",
@@ -636,6 +660,7 @@ export function createBrowserTool(opts?: {
               url: targetUrl,
               targetId,
               profile,
+              replayContext,
             }),
           );
         }
@@ -645,6 +670,7 @@ export function createBrowserTool(opts?: {
             baseUrl,
             profile,
             proxyRequest,
+            replayContext,
           });
         case "pdf": {
           const targetId = typeof params.targetId === "string" ? params.targetId.trim() : undefined;
@@ -655,7 +681,11 @@ export function createBrowserTool(opts?: {
                 profile,
                 body: { targetId },
               })) as Awaited<ReturnType<typeof browserPdfSave>>)
-            : await browserToolDeps.browserPdfSave(baseUrl, { targetId, profile });
+            : await browserToolDeps.browserPdfSave(baseUrl, {
+                targetId,
+                profile,
+                replayContext,
+              });
           return {
             content: [{ type: "text" as const, text: `FILE:${result.path}` }],
             details: result,
@@ -745,6 +775,7 @@ export function createBrowserTool(opts?: {
             baseUrl,
             profile,
             proxyRequest,
+            replayContext,
           });
         }
         default:

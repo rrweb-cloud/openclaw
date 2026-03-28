@@ -124,7 +124,7 @@ describe("rrweb replay browser integration", () => {
           },
         } as never,
         rootDir: extensionDir,
-        registerTool(tool: Parameters<typeof createTestPluginApi>[0]["registerTool"]) {
+        registerTool(tool) {
           registeredToolFactory = typeof tool === "function" ? (tool as never) : () => tool;
         },
       }),
@@ -143,6 +143,63 @@ describe("rrweb replay browser integration", () => {
       enabled: true,
       compatibilityMode: "modern",
       replayServerUrl: "https://api.rrwebcloud.com",
+    });
+  });
+
+  it("stays enabled without an extension directory when runtime upload is configured", async () => {
+    type RegisteredTool = {
+      execute?: (toolCallId: string, params: Record<string, unknown>) => Promise<unknown>;
+    };
+
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "rrweb-replay-runtime-only-state-"));
+    let registeredToolFactory:
+      | ((ctx: { sessionKey?: string; sessionId?: string }) => RegisteredTool | null | undefined)
+      | undefined;
+
+    entry.register(
+      createTestPluginApi({
+        id: "rrweb-replay",
+        name: "rrweb-replay",
+        source: "test",
+        config: {
+          browser: {
+            profiles: {
+              openclaw: {
+                cdpPort: 18800,
+              },
+            },
+          },
+        } as never,
+        pluginConfig: {
+          enabled: true,
+          publicKey: "pk_test_runtime_only",
+          extensionMode: "external-path",
+          extensionPath: "/definitely/missing",
+          browserProfiles: ["openclaw"],
+        },
+        runtime: {
+          state: {
+            resolveStateDir: () => stateDir,
+          },
+        } as never,
+        registerTool(tool) {
+          registeredToolFactory = typeof tool === "function" ? (tool as never) : () => tool;
+        },
+      }),
+    );
+
+    const tool = registeredToolFactory?.({
+      sessionKey: "session-key-runtime-only",
+      sessionId: "session-id-runtime-only",
+    }) as RegisteredTool | undefined;
+    const result = (await tool?.execute?.("tool-runtime-only", {})) as
+      | { details?: Record<string, unknown> }
+      | undefined;
+
+    expect(result?.details).toMatchObject({
+      ok: true,
+      enabled: true,
+      compatibilityMode: "modern",
     });
   });
 

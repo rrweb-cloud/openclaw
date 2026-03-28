@@ -162,6 +162,8 @@ describe("clawhub helpers", () => {
       });
     };
 
-    await expect(searchClawHubSkills({ query: "calendar", fetchImpl })).resolves.toEqual([]);
+    await expect(
+      searchClawHubSkills({ query: "calendar", fetchImpl: fetchImpl as unknown as typeof fetch }),
+    ).resolves.toEqual([]);
   });
 });
