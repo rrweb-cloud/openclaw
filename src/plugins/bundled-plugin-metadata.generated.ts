@@ -2695,7 +2695,7 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
         npmSpec: "@rrwebcloud/openclaw-session-recording",
         localPath: "extensions/rrweb-replay",
         defaultChoice: "npm",
-        minHostVersion: ">=2026.3.24",
+        minHostVersion: ">=2026.3.13",
       },
       release: {
         publishToNpm: true,

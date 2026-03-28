@@ -21,6 +21,8 @@ plugins:
 
 ## Notes
 
+- OpenClaw `2026.3.24+` uses the full automatic browser-runtime integration path
+- OpenClaw `2026.3.13` loads in legacy compatibility mode and reports clear next steps instead of failing on install
 - `serverUrl` defaults to `https://api.rrwebcloud.com`
 - `secretKey` is not required for the bundled browser flow
 - the plugin targets managed Chromium browser profiles such as `openclaw`

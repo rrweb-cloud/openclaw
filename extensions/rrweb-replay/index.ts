@@ -2,12 +2,6 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Type } from "@sinclair/typebox";
-import {
-  clearManagedBrowserReplayContextsForSession,
-  registerManagedBrowserExtensions,
-  setManagedBrowserReplayContext,
-  unregisterManagedBrowserExtensions,
-} from "openclaw/plugin-sdk/browser-runtime";
 import { readJsonFileWithFallback, writeJsonFileAtomically } from "openclaw/plugin-sdk/json-store";
 import { definePluginEntry, type OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import { type AnyAgentTool, type OpenClawConfig } from "openclaw/plugin-sdk/plugin-entry";
@@ -45,6 +39,28 @@ type ReplayStateStore = {
 
 const RRWEB_PLUGIN_ID = "rrweb-replay";
 const DEFAULT_RRWEB_API_BASE_URL = "https://api.rrwebcloud.com";
+const LEGACY_BROWSER_RUNTIME_REASON =
+  "This OpenClaw host does not export plugin-sdk/browser-runtime. Automatic rrweb extension wiring requires OpenClaw >=2026.3.24. On legacy hosts, install/configure the rrweb browser addon separately or upgrade OpenClaw.";
+
+type BrowserRuntimeCompat = {
+  clearManagedBrowserReplayContextsForSession: (sessionKey: string) => void;
+  registerManagedBrowserExtensions: (params: {
+    sourceId: string;
+    profiles: string[];
+    extensionPaths: string[];
+  }) => void;
+  setManagedBrowserReplayContext: (params: {
+    cdpUrl: string;
+    profile: string;
+    sessionKey?: string;
+    sessionId?: string;
+    replaySessionId: string;
+    replayServerUrl?: string;
+    replayUrl?: string;
+    updatedAt: string;
+  }) => void;
+  unregisterManagedBrowserExtensions: (sourceId: string) => void;
+};
 
 const rrwebReplayConfigSchema = {
   parse(value: unknown): RrwebReplayConfig {
@@ -210,9 +226,16 @@ function buildReplaySessionState(params: {
 function describeReplayAvailability(params: {
   config: RrwebReplayConfig;
   extensionDir: string | null;
+  browserRuntimeAvailable: boolean;
 }): { enabled: boolean; reason?: string } {
   if (!params.config.enabled) {
     return { enabled: false, reason: "Plugin disabled in rrweb-replay config." };
+  }
+  if (!params.browserRuntimeAvailable) {
+    return {
+      enabled: false,
+      reason: LEGACY_BROWSER_RUNTIME_REASON,
+    };
   }
   if (!params.extensionDir) {
     return {
@@ -232,6 +255,23 @@ function describeReplayAvailability(params: {
     };
   }
   return { enabled: true };
+}
+
+async function loadBrowserRuntimeCompat(): Promise<BrowserRuntimeCompat | null> {
+  try {
+    const mod = (await import("openclaw/plugin-sdk/browser-runtime")) as BrowserRuntimeCompat;
+    if (
+      typeof mod.registerManagedBrowserExtensions === "function" &&
+      typeof mod.unregisterManagedBrowserExtensions === "function" &&
+      typeof mod.setManagedBrowserReplayContext === "function" &&
+      typeof mod.clearManagedBrowserReplayContextsForSession === "function"
+    ) {
+      return mod;
+    }
+  } catch {
+    // Legacy OpenClaw hosts do not expose plugin-sdk/browser-runtime.
+  }
+  return null;
 }
 
 function resolveBrowserProfileForReplay(params: {
@@ -353,6 +393,7 @@ async function markReplaySessionEnded(params: {
 async function armReplayContext(params: {
   api: OpenClawPluginApi;
   pluginConfig: RrwebReplayConfig;
+  browserRuntime: BrowserRuntimeCompat | null;
   sessionKey?: string;
   sessionId?: string;
   preferredProfile?: string;
@@ -373,10 +414,10 @@ async function armReplayContext(params: {
     config: params.api.config,
     preferredProfile: params.preferredProfile ?? replayEntry.currentProfile,
   });
-  if (!profile || !profile.cdpUrl) {
+  if (!params.browserRuntime || !profile || !profile.cdpUrl) {
     return replayEntry;
   }
-  setManagedBrowserReplayContext({
+  params.browserRuntime.setManagedBrowserReplayContext({
     cdpUrl: profile.cdpUrl,
     profile: profile.name,
     sessionKey: params.sessionKey,
@@ -405,6 +446,7 @@ function createReplaySessionInfoTool(params: {
   api: OpenClawPluginApi;
   pluginConfig: RrwebReplayConfig;
   extensionDir: string | null;
+  browserRuntimePromise: Promise<BrowserRuntimeCompat | null>;
   context: {
     sessionKey?: string;
     sessionId?: string;
@@ -429,11 +471,13 @@ function createReplaySessionInfoTool(params: {
       ),
     }),
     execute: async (_id, rawParams) => {
+      const browserRuntime = await params.browserRuntimePromise;
       const toolParams =
         rawParams && typeof rawParams === "object" ? (rawParams as Record<string, unknown>) : null;
       const availability = describeReplayAvailability({
         config: params.pluginConfig,
         extensionDir: params.extensionDir,
+        browserRuntimeAvailable: Boolean(browserRuntime),
       });
       const activate = toolParams?.activate === true;
       const preferredProfile = toolParams
@@ -462,6 +506,7 @@ function createReplaySessionInfoTool(params: {
         entry = await armReplayContext({
           api: params.api,
           pluginConfig: params.pluginConfig,
+          browserRuntime,
           sessionKey: params.context.sessionKey,
           sessionId: params.context.sessionId,
           preferredProfile,
@@ -479,6 +524,7 @@ function createReplaySessionInfoTool(params: {
         enabled: availability.enabled,
         reason: availability.reason ?? entry.reason ?? null,
         activated: activate && availability.enabled,
+        compatibilityMode: browserRuntime ? "modern" : "legacy",
       });
     },
   };
@@ -493,13 +539,18 @@ export default definePluginEntry({
     const pluginConfig = rrwebReplayConfigSchema.parse(api.pluginConfig);
     const extensionDir = resolveExtensionDirectory({ config: pluginConfig, api });
     const serviceSourceId = `${RRWEB_PLUGIN_ID}:${api.source}`;
-    const availability = describeReplayAvailability({ config: pluginConfig, extensionDir });
+    const browserRuntimePromise = loadBrowserRuntimeCompat();
 
     api.registerService({
       id: "rrweb-replay-browser-extension",
       async start(ctx) {
+        const browserRuntime = await browserRuntimePromise;
         if (!pluginConfig.enabled) {
           ctx.logger.info("[rrweb-replay] disabled; not registering browser extension");
+          return;
+        }
+        if (!browserRuntime) {
+          ctx.logger.warn(`[rrweb-replay] ${LEGACY_BROWSER_RUNTIME_REASON}`);
           return;
         }
         if (!extensionDir) {
@@ -508,7 +559,7 @@ export default definePluginEntry({
           );
           return;
         }
-        registerManagedBrowserExtensions({
+        browserRuntime.registerManagedBrowserExtensions({
           sourceId: serviceSourceId,
           profiles: pluginConfig.browserProfiles,
           extensionPaths: [extensionDir],
@@ -518,11 +569,18 @@ export default definePluginEntry({
         );
       },
       async stop() {
-        unregisterManagedBrowserExtensions(serviceSourceId);
+        const browserRuntime = await browserRuntimePromise;
+        browserRuntime?.unregisterManagedBrowserExtensions(serviceSourceId);
       },
     });
 
     api.on("session_start", async (event, ctx) => {
+      const browserRuntime = await browserRuntimePromise;
+      const availability = describeReplayAvailability({
+        config: pluginConfig,
+        extensionDir,
+        browserRuntimeAvailable: Boolean(browserRuntime),
+      });
       await upsertReplaySession({
         api,
         config: pluginConfig,
@@ -536,8 +594,9 @@ export default definePluginEntry({
     });
 
     api.on("before_reset", async (_event, ctx) => {
-      if (ctx.sessionKey) {
-        clearManagedBrowserReplayContextsForSession(ctx.sessionKey);
+      const browserRuntime = await browserRuntimePromise;
+      if (ctx.sessionKey && browserRuntime) {
+        browserRuntime.clearManagedBrowserReplayContextsForSession(ctx.sessionKey);
       }
       await markReplaySessionEnded({
         api,
@@ -547,8 +606,9 @@ export default definePluginEntry({
     });
 
     api.on("session_end", async (_event, ctx) => {
-      if (ctx.sessionKey) {
-        clearManagedBrowserReplayContextsForSession(ctx.sessionKey);
+      const browserRuntime = await browserRuntimePromise;
+      if (ctx.sessionKey && browserRuntime) {
+        browserRuntime.clearManagedBrowserReplayContextsForSession(ctx.sessionKey);
       }
       await markReplaySessionEnded({
         api,
@@ -558,6 +618,12 @@ export default definePluginEntry({
     });
 
     api.on("before_tool_call", async (event, ctx) => {
+      const browserRuntime = await browserRuntimePromise;
+      const availability = describeReplayAvailability({
+        config: pluginConfig,
+        extensionDir,
+        browserRuntimeAvailable: Boolean(browserRuntime),
+      });
       if (event.toolName !== "browser" || pluginConfig.recordingPolicy !== "browser-only") {
         return;
       }
@@ -571,6 +637,7 @@ export default definePluginEntry({
       await armReplayContext({
         api,
         pluginConfig,
+        browserRuntime,
         sessionKey: ctx.sessionKey,
         sessionId: ctx.sessionId,
         preferredProfile: rawProfile,
@@ -583,6 +650,7 @@ export default definePluginEntry({
           api,
           pluginConfig,
           extensionDir,
+          browserRuntimePromise,
           context: {
             sessionKey: context.sessionKey,
             sessionId: context.sessionId,
