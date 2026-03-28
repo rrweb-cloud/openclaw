@@ -40,6 +40,7 @@ import {
   DEFAULT_OPENCLAW_BROWSER_COLOR,
   DEFAULT_OPENCLAW_BROWSER_PROFILE_NAME,
 } from "./constants.js";
+import { resolveManagedBrowserExtensionPaths } from "./runtime-registry.js";
 
 const log = createSubsystemLogger("browser").child("chrome");
 
@@ -115,6 +116,20 @@ export function buildOpenClawChromeLaunchArgs(params: {
   }
   if (process.platform === "linux") {
     args.push("--disable-dev-shm-usage");
+  }
+  const extensionPaths = resolveManagedBrowserExtensionPaths({
+    profileName: profile.name,
+    configuredExtensions: [
+      ...(profile.extensions ?? []),
+      ...(resolved.replay?.enabled && profile.driver === "openclaw" && resolved.replay.extensionPath
+        ? [resolved.replay.extensionPath]
+        : []),
+    ],
+  });
+  if (extensionPaths.length > 0) {
+    const joined = extensionPaths.join(",");
+    args.push(`--disable-extensions-except=${joined}`);
+    args.push(`--load-extension=${joined}`);
   }
   if (resolved.extraArgs.length > 0) {
     args.push(...resolved.extraArgs);

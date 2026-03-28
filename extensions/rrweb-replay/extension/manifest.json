@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "OpenClaw rrweb Replay Bootstrap",
+  "version": "0.1.0",
+  "description": "Bootstrap extension for OpenClaw-managed rrweb replay context.",
+  "permissions": ["storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-script.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

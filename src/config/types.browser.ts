@@ -3,6 +3,8 @@ export type BrowserProfileConfig = {
   cdpPort?: number;
   /** CDP URL for this profile (use for remote Chrome). */
   cdpUrl?: string;
+  /** Unpacked Chromium extension directories to load for this profile. */
+  extensions?: string[];
   /** Explicit user data directory for existing-session Chrome MCP attachment. */
   userDataDir?: string;
   /** Profile driver (default: openclaw). */
@@ -32,6 +34,16 @@ export type BrowserSsrFPolicyConfig = {
    */
   hostnameAllowlist?: string[];
 };
+export type BrowserReplayConfig = {
+  /** Enable rrwebcloud session replay support for managed OpenClaw browser profiles. */
+  enabled?: boolean;
+  /** Path to the unpacked replay extension artifact to load into Chrome. */
+  extensionPath?: string;
+  /** Inject replay correlation metadata into pages before site code runs. Default: true */
+  injectCorrelation?: boolean;
+  /** Persist local replay session mappings for diagnostics and operator lookup. Default: true */
+  persistMappings?: boolean;
+};
 export type BrowserConfig = {
   enabled?: boolean;
   /** If false, disable browser act:evaluate (arbitrary JS). Default: true */
@@ -60,6 +72,8 @@ export type BrowserConfig = {
   profiles?: Record<string, BrowserProfileConfig>;
   /** Default snapshot options (applied by the browser tool/CLI when unset). */
   snapshotDefaults?: BrowserSnapshotDefaults;
+  /** Managed session replay integration. */
+  replay?: BrowserReplayConfig;
   /** SSRF policy for browser navigation/open-tab operations. */
   ssrfPolicy?: BrowserSsrFPolicyConfig;
   /**

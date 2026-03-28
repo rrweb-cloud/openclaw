@@ -27,6 +27,8 @@ import {
   withBrowserNavigationPolicy,
 } from "./navigation-guard.js";
 import { withPageScopedCdpClient } from "./pw-session.page-cdp.js";
+import { OPENCLAW_RRWEB_BOOTSTRAP_WINDOW_KEY } from "./replay.js";
+import { getManagedBrowserReplayContext } from "./runtime-registry.js";
 
 export type BrowserConsoleMessage = {
   type: string;
@@ -100,6 +102,7 @@ type RoleRefsCacheEntry = {
 
 type ContextState = {
   traceActive: boolean;
+  replayFingerprint?: string;
 };
 
 const pageStates = new WeakMap<Page, PageState>();
@@ -323,9 +326,87 @@ export function ensureContextState(context: BrowserContext): ContextState {
   return state;
 }
 
-function observeBrowser(browser: Browser) {
+function buildReplayContextFingerprint(
+  replayContext: ReturnType<typeof getManagedBrowserReplayContext>,
+): string {
+  if (!replayContext) {
+    return "";
+  }
+  return JSON.stringify({
+    replaySessionId: replayContext.replaySessionId,
+    replayUrl: replayContext.replayUrl,
+    replayServerUrl: replayContext.replayServerUrl,
+    sessionKey: replayContext.sessionKey,
+    sessionId: replayContext.sessionId,
+    runId: replayContext.runId,
+    agentId: replayContext.agentId,
+    traceparent: replayContext.traceparent,
+    tracestate: replayContext.tracestate,
+    profile: replayContext.profile,
+  });
+}
+
+async function applyReplayContextToBrowserContext(params: {
+  context: BrowserContext;
+  cdpUrl: string;
+}): Promise<void> {
+  const replayContext = getManagedBrowserReplayContext(params.cdpUrl);
+  if (!replayContext) {
+    return;
+  }
+  const contextState = ensureContextState(params.context);
+  const fingerprint = buildReplayContextFingerprint(replayContext);
+  if (!fingerprint || contextState.replayFingerprint === fingerprint) {
+    return;
+  }
+  contextState.replayFingerprint = fingerprint;
+  const payload = {
+    provider: "rrwebcloud",
+    replaySessionId: replayContext.replaySessionId,
+    replayUrl: replayContext.replayUrl,
+    replayServerUrl: replayContext.replayServerUrl,
+    sessionKey: replayContext.sessionKey,
+    sessionId: replayContext.sessionId,
+    runId: replayContext.runId,
+    agentId: replayContext.agentId,
+    traceparent: replayContext.traceparent,
+    tracestate: replayContext.tracestate,
+    profile: replayContext.profile,
+    updatedAt: replayContext.updatedAt,
+  };
+  const applyPayload = (value: typeof payload) => {
+    const target = globalThis as typeof globalThis & {
+      __OPENCLAW_RRWEB_REPLAY?: typeof value;
+      [OPENCLAW_RRWEB_BOOTSTRAP_WINDOW_KEY]?: typeof value;
+    };
+    target.__OPENCLAW_RRWEB_REPLAY = value;
+    target[OPENCLAW_RRWEB_BOOTSTRAP_WINDOW_KEY] = value;
+    try {
+      window.dispatchEvent(
+        new CustomEvent("openclaw:rrweb-replay-context", {
+          detail: value,
+        }),
+      );
+    } catch {
+      // ignore DOM event failures
+    }
+  };
+  await params.context.addInitScript(applyPayload, payload);
+  for (const page of params.context.pages()) {
+    try {
+      await page.evaluate(applyPayload, payload);
+    } catch {
+      // best-effort for already-open pages
+    }
+  }
+}
+
+function observeBrowser(browser: Browser, cdpUrl: string) {
   for (const context of browser.contexts()) {
     observeContext(context);
+    void applyReplayContextToBrowserContext({ context, cdpUrl }).catch(() => {
+      // best-effort replay context sync only
+    });
   }
 }
 
@@ -361,7 +442,12 @@ async function connectBrowser(cdpUrl: string): Promise<ConnectedBrowser> {
         const connected: ConnectedBrowser = { browser, cdpUrl: normalized, onDisconnected };
         cachedByCdpUrl.set(normalized, connected);
         browser.on("disconnected", onDisconnected);
-        observeBrowser(browser);
+        observeBrowser(browser, normalized);
+        for (const context of browser.contexts()) {
+          await applyReplayContextToBrowserContext({ context, cdpUrl: normalized }).catch(() => {
+            // best-effort replay context sync only
+          });
+        }
         return connected;
       } catch (err) {
         lastErr = err;

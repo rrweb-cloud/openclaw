@@ -1,0 +1,12 @@
+{
+  "name": "@openclaw/rrweb-replay",
+  "version": "2026.3.28",
+  "private": true,
+  "description": "OpenClaw rrweb replay plugin",
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

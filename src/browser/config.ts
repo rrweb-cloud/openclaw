@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import type { BrowserConfig, BrowserProfileConfig, OpenClawConfig } from "../config/config.js";
 import { resolveGatewayPort } from "../config/paths.js";
 import {
@@ -33,6 +34,12 @@ export type ResolvedBrowserConfig = {
   headless: boolean;
   noSandbox: boolean;
   attachOnly: boolean;
+  replay?: {
+    enabled: boolean;
+    extensionPath?: string;
+    injectCorrelation: boolean;
+    persistMappings: boolean;
+  };
   defaultProfile: string;
   profiles: Record<string, BrowserProfileConfig>;
   ssrfPolicy?: SsrFPolicy;
@@ -45,6 +52,7 @@ export type ResolvedBrowserProfile = {
   cdpUrl: string;
   cdpHost: string;
   cdpIsLoopback: boolean;
+  extensions?: string[];
   userDataDir?: string;
   color: string;
   driver: "openclaw" | "existing-session";
@@ -97,6 +105,29 @@ function normalizeStringList(raw: string[] | undefined): string[] | undefined {
     .map((value) => value.trim())
     .filter((value): value is string => value.length > 0);
   return values.length > 0 ? values : undefined;
+}
+
+function resolveBrowserReplayConfig(cfg: BrowserConfig | undefined) {
+  const enabled = cfg?.replay?.enabled === true;
+  const injectCorrelation = cfg?.replay?.injectCorrelation !== false;
+  const persistMappings = cfg?.replay?.persistMappings !== false;
+  const extensionPath = resolveUserPath(cfg?.replay?.extensionPath?.trim() || "") || undefined;
+
+  if (enabled && !extensionPath) {
+    throw new Error("browser.replay.extensionPath is required when browser.replay.enabled=true");
+  }
+  if (enabled && extensionPath) {
+    if (!fs.existsSync(extensionPath)) {
+      throw new Error(`browser.replay.extensionPath does not exist: ${extensionPath}`);
+    }
+  }
+
+  return {
+    enabled,
+    extensionPath,
+    injectCorrelation,
+    persistMappings,
+  };
 }
 
 function resolveBrowserSsrFPolicy(cfg: BrowserConfig | undefined): SsrFPolicy | undefined {
@@ -280,6 +311,7 @@ export function resolveBrowserConfig(
     ? cfg.extraArgs.filter((a): a is string => typeof a === "string" && a.trim().length > 0)
     : [];
   const ssrfPolicy = resolveBrowserSsrFPolicy(cfg);
+  const replay = resolveBrowserReplayConfig(cfg);
   return {
     enabled,
     evaluateEnabled,
@@ -296,6 +328,7 @@ export function resolveBrowserConfig(
     headless,
     noSandbox,
     attachOnly,
+    replay,
     defaultProfile,
     profiles,
     ssrfPolicy,
@@ -330,6 +363,7 @@ export function resolveProfile(
       cdpUrl: "",
       cdpHost: "",
       cdpIsLoopback: true,
+      extensions: [],
       userDataDir: resolveUserPath(profile.userDataDir?.trim() || "") || undefined,
       color: profile.color,
       driver,
@@ -354,6 +388,11 @@ export function resolveProfile(
     cdpUrl,
     cdpHost,
     cdpIsLoopback: isLoopbackHost(cdpHost),
+    extensions: Array.isArray(profile.extensions)
+      ? profile.extensions
+          .map((entry) => resolveUserPath(entry.trim()) || "")
+          .filter((entry): entry is string => entry.length > 0)
+      : [],
     color: profile.color,
     driver,
     attachOnly: profile.attachOnly ?? resolved.attachOnly,

@@ -1,0 +1,67 @@
+{
+  "id": "rrweb-replay",
+  "name": "rrweb Replay",
+  "description": "Portable rrweb replay bootstrap plugin for OpenClaw-managed browsers.",
+  "skills": ["./skills"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": { "type": "boolean" },
+      "serverUrl": { "type": "string" },
+      "publicKey": { "type": "string" },
+      "secretKey": { "type": "string" },
+      "publicKeyEnvVar": { "type": "string" },
+      "secretKeyEnvVar": { "type": "string" },
+      "extensionMode": {
+        "type": "string",
+        "enum": ["bundled", "external-path"]
+      },
+      "extensionPath": { "type": "string" },
+      "browserProfiles": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "recordingPolicy": {
+        "type": "string",
+        "enum": ["browser-only", "opt-in-tool"]
+      }
+    }
+  },
+  "uiHints": {
+    "serverUrl": {
+      "label": "Replay Server URL",
+      "help": "Base rrweb/rrwebcloud endpoint used for replay metadata.",
+      "placeholder": "https://rrwebcloud.example.com"
+    },
+    "publicKey": {
+      "label": "Public Key",
+      "sensitive": true
+    },
+    "secretKey": {
+      "label": "Secret Key",
+      "sensitive": true
+    },
+    "publicKeyEnvVar": {
+      "label": "Public Key Env Var",
+      "advanced": true
+    },
+    "secretKeyEnvVar": {
+      "label": "Secret Key Env Var",
+      "advanced": true
+    },
+    "extensionMode": {
+      "label": "Extension Mode"
+    },
+    "extensionPath": {
+      "label": "External Extension Path",
+      "advanced": true
+    },
+    "browserProfiles": {
+      "label": "Browser Profiles"
+    },
+    "recordingPolicy": {
+      "label": "Recording Policy"
+    }
+  }
+}

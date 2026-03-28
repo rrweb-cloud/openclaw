@@ -80,6 +80,7 @@
   "reply-history",
   "media-understanding",
   "request-url",
+  "browser-runtime",
   "runtime-store",
   "json-store",
   "keyed-async-queue",
