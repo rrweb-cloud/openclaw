@@ -1,0 +1,5 @@
+{
+  "name": "rrweb Replay",
+  "description": "Portable rrweb replay skill pack for OpenClaw and Codex-compatible bundles.",
+  "skills": ["skills"]
+}

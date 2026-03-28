@@ -94,6 +94,9 @@ Need to install Node? See [Node setup](/install/node).
   <Card title="Connect a channel" href="/channels" icon="message-square">
     WhatsApp, Telegram, Discord, iMessage, and more.
   </Card>
+  <Card title="Add session replay" href="/plugins">
+    Install the `rrweb-replay` plugin and set `publicKey: public_key_rr_...` to capture managed browser sessions in rrwebcloud.
+  </Card>
   <Card title="Pairing and safety" href="/channels/pairing" icon="shield">
     Control who can message your agent.
   </Card>

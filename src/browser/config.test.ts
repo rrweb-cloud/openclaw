@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { withEnv } from "../test-utils/env.js";
 import { resolveUserPath } from "../utils.js";
@@ -32,6 +35,12 @@ describe("browser config", () => {
     expect(resolveProfile(resolved, "chrome-relay")).toBe(null);
     expect(resolved.remoteCdpTimeoutMs).toBe(1500);
     expect(resolved.remoteCdpHandshakeTimeoutMs).toBe(3000);
+    expect(resolved.replay).toEqual({
+      enabled: false,
+      extensionPath: undefined,
+      injectCorrelation: true,
+      persistMappings: true,
+    });
   });
 
   it("derives default ports from OPENCLAW_GATEWAY_PORT when unset", () => {
@@ -375,5 +384,36 @@ describe("browser config", () => {
       });
       expect(resolved.defaultProfile).toBe("custom");
     });
+  });
+
+  it("resolves replay config when enabled with a valid extension path", () => {
+    const extensionDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-replay-ext-"));
+    try {
+      const resolved = resolveBrowserConfig({
+        replay: {
+          enabled: true,
+          extensionPath: extensionDir,
+        },
+      });
+      expect(resolved.replay).toEqual({
+        enabled: true,
+        extensionPath: extensionDir,
+        injectCorrelation: true,
+        persistMappings: true,
+      });
+    } finally {
+      fs.rmSync(extensionDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects replay when the extension path is missing", () => {
+    expect(() =>
+      resolveBrowserConfig({
+        replay: {
+          enabled: true,
+          extensionPath: "/tmp/openclaw-missing-replay-extension",
+        },
+      }),
+    ).toThrow(/browser\.replay\.extensionPath does not exist/i);
   });
 });

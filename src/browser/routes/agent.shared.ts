@@ -1,6 +1,19 @@
 import { toBrowserErrorResponse } from "../errors.js";
 import type { PwAiModule } from "../pw-ai-module.js";
 import { getPwAiModule as getPwAiModuleBase } from "../pw-ai-module.js";
+import {
+  applyReplayBootstrapToPage,
+  buildBrowserReplayBootstrap,
+  collectAndPersistReplaySession,
+  ensureReplayCaptureForPage,
+  getReplayMappingForSessionKey,
+  registerReplayContextForTarget,
+} from "../replay.js";
+import { readReplayContextFromBrowserRequest } from "../replay.request.js";
+import {
+  getManagedBrowserReplayContext,
+  setManagedBrowserReplayContext,
+} from "../runtime-registry.js";
 import type { BrowserRouteContext, ProfileContext } from "../server-context.js";
 import type { BrowserRequest, BrowserResponse } from "./types.js";
 import { getProfileContext, jsonError } from "./utils.js";
@@ -142,7 +155,86 @@ export async function withPlaywrightRouteContext<T>(
       if (!pw) {
         return undefined as T | undefined;
       }
-      return await params.run({ profileCtx, tab, cdpUrl, pw });
+      const replayConfig = params.ctx.state().resolved.replay ?? {
+        enabled: false,
+        extensionPath: undefined,
+        injectCorrelation: true,
+        persistMappings: true,
+      };
+      const replayRequestContext =
+        replayConfig.enabled && profileCtx.profile.driver === "openclaw"
+          ? readReplayContextFromBrowserRequest(params.req)
+          : null;
+      const replayBootstrap = buildBrowserReplayBootstrap(replayRequestContext);
+      if (replayBootstrap) {
+        const currentReplayRuntime = getManagedBrowserReplayContext(cdpUrl);
+        const existingMapping = replayConfig.persistMappings
+          ? await getReplayMappingForSessionKey(replayBootstrap.sessionKey)
+          : null;
+        setManagedBrowserReplayContext({
+          ...currentReplayRuntime,
+          cdpUrl,
+          profile: profileCtx.profile.name,
+          sessionKey: replayBootstrap.sessionKey,
+          runId: replayBootstrap.runId,
+          agentId: replayBootstrap.agentId,
+          traceparent: replayBootstrap.traceparent,
+          tracestate: replayBootstrap.tracestate,
+          replaySessionId: existingMapping?.replaySessionId,
+          replayUrl: existingMapping?.replayUrl,
+          updatedAt: new Date().toISOString(),
+        });
+        registerReplayContextForTarget({
+          profileName: profileCtx.profile.name,
+          targetId: tab.targetId,
+          context: replayBootstrap,
+          uploadConfig: {
+            serverUrl: currentReplayRuntime?.replayServerUrl,
+            publicKey: currentReplayRuntime?.replayPublicKey,
+            rrwebCdnUrl: currentReplayRuntime?.replayRrwebCdnUrl,
+          },
+        });
+        if (replayConfig.injectCorrelation) {
+          const page = await pw.getPageForTargetId({ cdpUrl, targetId: tab.targetId });
+          await applyReplayBootstrapToPage({ page, bootstrap: replayBootstrap }).catch(
+            () => undefined,
+          );
+          await ensureReplayCaptureForPage({
+            page,
+            profileName: profileCtx.profile.name,
+            targetId: tab.targetId,
+          }).catch(() => undefined);
+        }
+      }
+      const result = await params.run({ profileCtx, tab, cdpUrl, pw });
+      if (replayBootstrap && replayConfig.persistMappings) {
+        const page = await pw
+          .getPageForTargetId({ cdpUrl, targetId: tab.targetId })
+          .catch(() => null);
+        if (page) {
+          const mapping = await collectAndPersistReplaySession({
+            page,
+            profileName: profileCtx.profile.name,
+            targetId: tab.targetId,
+          }).catch(() => null);
+          if (mapping) {
+            setManagedBrowserReplayContext({
+              ...getManagedBrowserReplayContext(cdpUrl),
+              cdpUrl,
+              profile: profileCtx.profile.name,
+              sessionKey: mapping.sessionKey,
+              runId: mapping.runId,
+              agentId: mapping.agentId,
+              traceparent: mapping.traceparent,
+              tracestate: mapping.tracestate,
+              replaySessionId: mapping.replaySessionId,
+              replayUrl: mapping.replayUrl,
+              updatedAt: mapping.updatedAt,
+            });
+          }
+        }
+      }
+      return result;
     },
   });
 }

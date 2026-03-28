@@ -6,6 +6,8 @@ import type {
   BrowserNetworkRequest,
   BrowserPageError,
 } from "./pw-session.js";
+import type { BrowserReplayRequestContext } from "./replay.js";
+import { attachReplayContextToBody, attachReplayContextToQuery } from "./replay.request.js";
 
 function buildQuerySuffix(params: Array<[string, string | boolean | undefined]>): string {
   const query = new URLSearchParams();
@@ -24,12 +26,32 @@ function buildQuerySuffix(params: Array<[string, string | boolean | undefined]>)
 
 export async function browserConsoleMessages(
   baseUrl: string | undefined,
-  opts: { level?: string; targetId?: string; profile?: string } = {},
+  opts: {
+    level?: string;
+    targetId?: string;
+    profile?: string;
+    replayContext?: BrowserReplayRequestContext | null;
+  } = {},
 ): Promise<{ ok: true; messages: BrowserConsoleMessage[]; targetId: string }> {
+  const query = attachReplayContextToQuery(
+    Object.fromEntries(
+      [
+        ["level", opts.level],
+        ["targetId", opts.targetId],
+        ["profile", opts.profile],
+      ].filter(([, value]) => value !== undefined),
+    ) as Record<string, string>,
+    opts.replayContext,
+  );
   const suffix = buildQuerySuffix([
-    ["level", opts.level],
-    ["targetId", opts.targetId],
-    ["profile", opts.profile],
+    ["level", query?.level as string | undefined],
+    ["targetId", query?.targetId as string | undefined],
+    ["profile", query?.profile as string | undefined],
+    ["replaySessionKey", query?.replaySessionKey as string | undefined],
+    ["replayRunId", query?.replayRunId as string | undefined],
+    ["replayAgentId", query?.replayAgentId as string | undefined],
+    ["replayTraceparent", query?.replayTraceparent as string | undefined],
+    ["replayTracestate", query?.replayTracestate as string | undefined],
   ]);
   return await fetchBrowserJson<{
     ok: true;
@@ -40,13 +62,19 @@ export async function browserConsoleMessages(
 
 export async function browserPdfSave(
   baseUrl: string | undefined,
-  opts: { targetId?: string; profile?: string } = {},
+  opts: {
+    targetId?: string;
+    profile?: string;
+    replayContext?: BrowserReplayRequestContext | null;
+  } = {},
 ): Promise<BrowserActionPathResult> {
   const q = buildProfileQuery(opts.profile);
   return await fetchBrowserJson<BrowserActionPathResult>(withBaseUrl(baseUrl, `/pdf${q}`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ targetId: opts.targetId }),
+    body: JSON.stringify(
+      attachReplayContextToBody({ targetId: opts.targetId }, opts.replayContext),
+    ),
     timeoutMs: 20000,
   });
 }

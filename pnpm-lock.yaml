@@ -566,15 +566,11 @@ importers:
 
   extensions/openshell: {}
 
-  extensions/orq:
-    devDependencies:
-      openclaw:
-        specifier: workspace:*
-        version: link:../..
-
   extensions/perplexity: {}
 
   extensions/qianfan: {}
+
+  extensions/rrweb-replay: {}
 
   extensions/sglang: {}
 

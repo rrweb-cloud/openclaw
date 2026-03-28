@@ -5,6 +5,8 @@ import type {
 } from "./client-actions-types.js";
 import { buildProfileQuery, withBaseUrl } from "./client-actions-url.js";
 import { fetchBrowserJson } from "./client-fetch.js";
+import type { BrowserReplayRequestContext } from "./replay.js";
+import { attachReplayContextToBody } from "./replay.request.js";
 
 export type BrowserFormField = {
   ref: string;
@@ -115,12 +117,13 @@ async function postDownloadRequest(
   route: "/wait/download" | "/download",
   body: Record<string, unknown>,
   profile?: string,
+  replayContext?: BrowserReplayRequestContext | null,
 ): Promise<BrowserDownloadResult> {
   const q = buildProfileQuery(profile);
   return await fetchBrowserJson<BrowserDownloadResult>(withBaseUrl(baseUrl, `${route}${q}`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(attachReplayContextToBody(body, replayContext)),
     timeoutMs: 20000,
   });
 }
@@ -131,13 +134,16 @@ export async function browserNavigate(
     url: string;
     targetId?: string;
     profile?: string;
+    replayContext?: BrowserReplayRequestContext | null;
   },
 ): Promise<BrowserActionTabResult> {
   const q = buildProfileQuery(opts.profile);
   return await fetchBrowserJson<BrowserActionTabResult>(withBaseUrl(baseUrl, `/navigate${q}`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url: opts.url, targetId: opts.targetId }),
+    body: JSON.stringify(
+      attachReplayContextToBody({ url: opts.url, targetId: opts.targetId }, opts.replayContext),
+    ),
     timeoutMs: 20000,
   });
 }
@@ -201,6 +207,7 @@ export async function browserWaitForDownload(
     targetId?: string;
     timeoutMs?: number;
     profile?: string;
+    replayContext?: BrowserReplayRequestContext | null;
   },
 ): Promise<BrowserDownloadResult> {
   return await postDownloadRequest(
@@ -212,6 +219,7 @@ export async function browserWaitForDownload(
       timeoutMs: opts.timeoutMs,
     },
     opts.profile,
+    opts.replayContext,
   );
 }
 
@@ -223,6 +231,7 @@ export async function browserDownload(
     targetId?: string;
     timeoutMs?: number;
     profile?: string;
+    replayContext?: BrowserReplayRequestContext | null;
   },
 ): Promise<BrowserDownloadResult> {
   return await postDownloadRequest(
@@ -235,19 +244,22 @@ export async function browserDownload(
       timeoutMs: opts.timeoutMs,
     },
     opts.profile,
+    opts.replayContext,
   );
 }
 
 export async function browserAct(
   baseUrl: string | undefined,
   req: BrowserActRequest,
-  opts?: { profile?: string },
+  opts?: { profile?: string; replayContext?: BrowserReplayRequestContext | null },
 ): Promise<BrowserActResponse> {
   const q = buildProfileQuery(opts?.profile);
   return await fetchBrowserJson<BrowserActResponse>(withBaseUrl(baseUrl, `/act${q}`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
+    body: JSON.stringify(
+      attachReplayContextToBody(req as Record<string, unknown>, opts?.replayContext),
+    ),
     timeoutMs: 20000,
   });
 }
@@ -261,19 +273,25 @@ export async function browserScreenshotAction(
     element?: string;
     type?: "png" | "jpeg";
     profile?: string;
+    replayContext?: BrowserReplayRequestContext | null;
   },
 ): Promise<BrowserActionPathResult> {
   const q = buildProfileQuery(opts.profile);
   return await fetchBrowserJson<BrowserActionPathResult>(withBaseUrl(baseUrl, `/screenshot${q}`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      targetId: opts.targetId,
-      fullPage: opts.fullPage,
-      ref: opts.ref,
-      element: opts.element,
-      type: opts.type,
-    }),
+    body: JSON.stringify(
+      attachReplayContextToBody(
+        {
+          targetId: opts.targetId,
+          fullPage: opts.fullPage,
+          ref: opts.ref,
+          element: opts.element,
+          type: opts.type,
+        },
+        opts.replayContext,
+      ),
+    ),
     timeoutMs: 20000,
   });
 }

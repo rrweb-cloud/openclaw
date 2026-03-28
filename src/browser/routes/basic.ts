@@ -3,6 +3,8 @@ import { resolveBrowserExecutableForPlatform } from "../chrome.executables.js";
 import { toBrowserErrorResponse } from "../errors.js";
 import { getBrowserProfileCapabilities } from "../profile-capabilities.js";
 import { createBrowserProfilesService } from "../profiles-service.js";
+import { getReplayMappingForSessionKey } from "../replay.js";
+import { readReplayContextFromBrowserRequest } from "../replay.request.js";
 import type { BrowserRouteContext, ProfileContext } from "../server-context.js";
 import { resolveProfileContext } from "./agent.shared.js";
 import type { BrowserRequest, BrowserResponse, BrowserRouteRegistrar } from "./types.js";
@@ -74,6 +76,16 @@ export function registerBrowserBasicRoutes(app: BrowserRouteRegistrar, ctx: Brow
     }
 
     try {
+      const replayRequestContext = readReplayContextFromBrowserRequest(req);
+      const replayConfig = current.resolved.replay ?? {
+        enabled: false,
+        extensionPath: undefined,
+        injectCorrelation: true,
+        persistMappings: true,
+      };
+      const replayMapping = replayConfig.persistMappings
+        ? await getReplayMappingForSessionKey(replayRequestContext?.sessionKey)
+        : null;
       const [cdpHttp, cdpReady] = await Promise.all([
         profileCtx.isHttpReachable(300),
         profileCtx.isReachable(600),
@@ -118,6 +130,18 @@ export function registerBrowserBasicRoutes(app: BrowserRouteRegistrar, ctx: Brow
         noSandbox: current.resolved.noSandbox,
         executablePath: current.resolved.executablePath ?? null,
         attachOnly: profileCtx.profile.attachOnly,
+        replay: {
+          enabled: replayConfig.enabled,
+          extensionPath: replayConfig.extensionPath ?? null,
+          injectCorrelation: replayConfig.injectCorrelation,
+          persistMappings: replayConfig.persistMappings,
+          sessionKey: replayMapping?.sessionKey ?? replayRequestContext?.sessionKey ?? null,
+          runId: replayMapping?.runId ?? replayRequestContext?.runId ?? null,
+          replaySessionId: replayMapping?.replaySessionId ?? null,
+          replayUrl: replayMapping?.replayUrl ?? null,
+          provider: replayMapping?.provider ?? null,
+          traceId: replayMapping?.traceId ?? null,
+        },
       });
     } catch (err) {
       const mapped = toBrowserErrorResponse(err);

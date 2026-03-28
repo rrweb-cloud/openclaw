@@ -2582,51 +2582,6 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
     },
   },
   {
-    dirName: "orq",
-    idHint: "orq",
-    source: {
-      source: "./src/index.ts",
-      built: "src/index.js",
-    },
-    packageName: "@openclaw/orq-provider",
-    packageVersion: "2026.3.25",
-    packageDescription:
-      "OpenClaw Orq AI provider plugin — routes requests through the Orq AI router",
-    packageManifest: {
-      extensions: ["./src/index.ts"],
-      install: {
-        minHostVersion: ">=2026.3.22",
-      },
-    },
-    manifest: {
-      id: "orq",
-      configSchema: {
-        type: "object",
-        additionalProperties: false,
-        properties: {},
-      },
-      providers: ["orq"],
-      providerAuthEnvVars: {
-        orq: ["ORQ_API_KEY"],
-      },
-      providerAuthChoices: [
-        {
-          provider: "orq",
-          method: "api-key",
-          choiceId: "orq-api-key",
-          choiceLabel: "Orq AI API key",
-          groupId: "orq",
-          groupLabel: "Orq AI Router",
-          groupHint: "API key",
-          optionKey: "orqApiKey",
-          cliFlag: "--orq-api-key",
-          cliOption: "--orq-api-key <key>",
-          cliDescription: "Orq API key",
-        },
-      ],
-    },
-  },
-  {
     dirName: "perplexity",
     idHint: "perplexity-plugin",
     source: {
@@ -2722,6 +2677,113 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
           cliDescription: "QIANFAN API key",
         },
       ],
+    },
+  },
+  {
+    dirName: "rrweb-replay",
+    idHint: "openclaw-session-recording",
+    source: {
+      source: "./index.ts",
+      built: "index.js",
+    },
+    packageName: "@rrwebcloud/openclaw-session-recording",
+    packageVersion: "2026.3.28-2",
+    packageDescription: "OpenClaw rrweb replay plugin",
+    packageManifest: {
+      extensions: ["./index.ts"],
+      install: {
+        npmSpec: "@rrwebcloud/openclaw-session-recording",
+        localPath: "extensions/rrweb-replay",
+        defaultChoice: "npm",
+        minHostVersion: ">=2026.3.13",
+      },
+    },
+    manifest: {
+      id: "rrweb-replay",
+      configSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          enabled: {
+            type: "boolean",
+          },
+          serverUrl: {
+            type: "string",
+          },
+          publicKey: {
+            type: "string",
+          },
+          secretKey: {
+            type: "string",
+          },
+          publicKeyEnvVar: {
+            type: "string",
+          },
+          secretKeyEnvVar: {
+            type: "string",
+          },
+          extensionMode: {
+            type: "string",
+            enum: ["bundled", "external-path"],
+          },
+          extensionPath: {
+            type: "string",
+          },
+          browserProfiles: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+          recordingPolicy: {
+            type: "string",
+            enum: ["browser-only", "opt-in-tool"],
+          },
+        },
+      },
+      skills: ["./skills"],
+      name: "rrweb Replay",
+      description: "Portable rrweb replay bootstrap plugin for OpenClaw-managed browsers.",
+      uiHints: {
+        serverUrl: {
+          label: "Replay Server URL",
+          help: "Optional. Defaults to the rrweb Cloud API endpoint used by the bundled browser replay flow.",
+          placeholder: "https://api.rrwebcloud.com",
+          advanced: true,
+        },
+        publicKey: {
+          label: "Public Key",
+          sensitive: true,
+        },
+        secretKey: {
+          label: "Secret Key",
+          sensitive: true,
+          advanced: true,
+          help: "Optional. Reserved for future server-side upload flows and not required for the bundled browser bootstrap.",
+        },
+        publicKeyEnvVar: {
+          label: "Public Key Env Var",
+          advanced: true,
+        },
+        secretKeyEnvVar: {
+          label: "Secret Key Env Var",
+          advanced: true,
+          help: "Optional. Only needed when a future rrweb upload path requires a secret key.",
+        },
+        extensionMode: {
+          label: "Extension Mode",
+        },
+        extensionPath: {
+          label: "External Extension Path",
+          advanced: true,
+        },
+        browserProfiles: {
+          label: "Browser Profiles",
+        },
+        recordingPolicy: {
+          label: "Recording Policy",
+        },
+      },
     },
   },
   {

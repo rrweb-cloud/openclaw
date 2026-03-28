@@ -28,6 +28,16 @@ const BrowserSnapshotDefaultsSchema = z
   .strict()
   .optional();
 
+const BrowserReplaySchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    extensionPath: z.string().optional(),
+    injectCorrelation: z.boolean().optional(),
+    persistMappings: z.boolean().optional(),
+  })
+  .strict()
+  .optional();
+
 const NodeHostSchema = z
   .object({
     browserProxy: z
@@ -380,6 +390,7 @@ export const OpenClawSchema = z
         cdpPortRangeStart: z.number().int().min(1).max(65535).optional(),
         defaultProfile: z.string().optional(),
         snapshotDefaults: BrowserSnapshotDefaultsSchema,
+        replay: BrowserReplaySchema,
         ssrfPolicy: z
           .object({
             allowPrivateNetwork: z.boolean().optional(),
@@ -398,6 +409,7 @@ export const OpenClawSchema = z
               .object({
                 cdpPort: z.number().int().min(1).max(65535).optional(),
                 cdpUrl: z.string().optional(),
+                extensions: z.array(z.string()).optional(),
                 userDataDir: z.string().optional(),
                 driver: z
                   .union([z.literal("openclaw"), z.literal("clawd"), z.literal("existing-session")])

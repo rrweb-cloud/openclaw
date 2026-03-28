@@ -59,7 +59,7 @@ describe("msteams graph helpers", () => {
         status: 200,
         headers: { "content-type": "application/json" },
       });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     await expect(
       fetchGraphJson<{ value: Array<{ id: string }> }>({
@@ -81,7 +81,7 @@ describe("msteams graph helpers", () => {
 
     globalThis.fetch = vi.fn(async () => {
       return new Response("forbidden", { status: 403 });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     await expect(
       fetchGraphJson({
@@ -147,7 +147,7 @@ describe("msteams graph helpers", () => {
           headers: { "content-type": "application/json" },
         },
       );
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     await expect(listTeamsByName("graph-token", "Bob's Team")).resolves.toEqual([
       { id: "team-1", displayName: "Ops" },

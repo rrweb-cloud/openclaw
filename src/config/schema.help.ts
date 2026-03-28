@@ -266,6 +266,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Per-profile local CDP port used when connecting to browser instances by port instead of URL. Use unique ports per profile to avoid connection collisions.",
   "browser.profiles.*.cdpUrl":
     "Per-profile CDP websocket URL used for explicit remote browser routing by profile name. Use this when profile connections terminate on remote hosts or tunnels.",
+  "browser.profiles.*.extensions":
+    "Per-profile unpacked Chromium extension directories to load for managed browser launches. Use this for browser-side integrations like replay or debugging extensions that must start with the OpenClaw-managed browser profile.",
   "browser.profiles.*.userDataDir":
     "Per-profile Chromium user data directory for existing-session attachment through Chrome DevTools MCP. Use this for host-local Brave, Edge, Chromium, or non-default Chrome profiles when the built-in auto-connect path would pick the wrong browser data directory.",
   "browser.profiles.*.driver":
@@ -290,6 +292,16 @@ export const FIELD_HELP: Record<string, string> = {
     "Explicit hostname allowlist exceptions for SSRF policy checks on browser/network requests. Keep this list minimal and review entries regularly to avoid stale broad access.",
   "browser.ssrfPolicy.hostnameAllowlist":
     "Legacy/alternate hostname allowlist field used by SSRF policy consumers for explicit host exceptions. Use stable exact hostnames and avoid wildcard-like broad patterns.",
+  "browser.replay":
+    "rrwebcloud session replay integration for managed OpenClaw browser profiles. Use this to load a replay extension at browser startup and inject trace/session correlation into managed tabs.",
+  "browser.replay.enabled":
+    "Enables rrwebcloud session replay for managed browser profiles. When enabled, browser.replay.extensionPath must point to an unpacked Chromium extension directory.",
+  "browser.replay.extensionPath":
+    "Filesystem path to the unpacked rrwebcloud Chromium extension artifact used for managed OpenClaw browser launches.",
+  "browser.replay.injectCorrelation":
+    "Inject OpenClaw session and trace correlation data into managed tabs before page scripts run so the replay extension can tag recordings.",
+  "browser.replay.persistMappings":
+    "Persist a local sessionKey-to-replay mapping under the state directory so operators can correlate OTEL traces with replay sessions even if remote tagging is incomplete.",
   "browser.remoteCdpTimeoutMs":
     "Timeout in milliseconds for connecting to a remote CDP endpoint before failing the browser attach attempt. Increase for high-latency tunnels, or lower for faster failure detection.",
   "browser.remoteCdpHandshakeTimeoutMs":

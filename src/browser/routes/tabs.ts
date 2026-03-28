@@ -3,7 +3,20 @@ import {
   assertBrowserNavigationAllowed,
   withBrowserNavigationPolicy,
 } from "../navigation-guard.js";
+import {
+  applyReplayBootstrapToPage,
+  buildBrowserReplayBootstrap,
+  ensureReplayCaptureForPage,
+  getReplayMappingForSessionKey,
+  registerReplayContextForTarget,
+} from "../replay.js";
+import { readReplayContextFromBrowserRequest } from "../replay.request.js";
+import {
+  getManagedBrowserReplayContext,
+  setManagedBrowserReplayContext,
+} from "../runtime-registry.js";
 import type { BrowserRouteContext, ProfileContext } from "../server-context.js";
+import { getPwAiModule } from "./agent.shared.js";
 import type { BrowserRequest, BrowserResponse, BrowserRouteRegistrar } from "./types.js";
 import { getProfileContext, jsonError, toNumber, toStringOrEmpty } from "./utils.js";
 
@@ -132,12 +145,70 @@ export function registerBrowserTabRoutes(app: BrowserRouteRegistrar, ctx: Browse
       ctx,
       mapTabError: true,
       run: async (profileCtx) => {
+        const replayConfig = ctx.state().resolved.replay ?? {
+          enabled: false,
+          extensionPath: undefined,
+          injectCorrelation: true,
+          persistMappings: true,
+        };
         await assertBrowserNavigationAllowed({
           url,
           ...withBrowserNavigationPolicy(ctx.state().resolved.ssrfPolicy),
         });
         await profileCtx.ensureBrowserAvailable();
         const tab = await profileCtx.openTab(url);
+        const replayRequestContext =
+          replayConfig.enabled && profileCtx.profile.driver === "openclaw"
+            ? readReplayContextFromBrowserRequest(req)
+            : null;
+        const replayBootstrap = buildBrowserReplayBootstrap(replayRequestContext);
+        if (replayBootstrap) {
+          const currentReplayRuntime = getManagedBrowserReplayContext(profileCtx.profile.cdpUrl);
+          const existingMapping = replayConfig.persistMappings
+            ? await getReplayMappingForSessionKey(replayBootstrap.sessionKey)
+            : null;
+          setManagedBrowserReplayContext({
+            ...currentReplayRuntime,
+            cdpUrl: profileCtx.profile.cdpUrl,
+            profile: profileCtx.profile.name,
+            sessionKey: replayBootstrap.sessionKey,
+            runId: replayBootstrap.runId,
+            agentId: replayBootstrap.agentId,
+            traceparent: replayBootstrap.traceparent,
+            tracestate: replayBootstrap.tracestate,
+            replaySessionId: existingMapping?.replaySessionId,
+            replayUrl: existingMapping?.replayUrl,
+            updatedAt: new Date().toISOString(),
+          });
+          registerReplayContextForTarget({
+            profileName: profileCtx.profile.name,
+            targetId: tab.targetId,
+            context: replayBootstrap,
+            uploadConfig: {
+              serverUrl: currentReplayRuntime?.replayServerUrl,
+              publicKey: currentReplayRuntime?.replayPublicKey,
+              rrwebCdnUrl: currentReplayRuntime?.replayRrwebCdnUrl,
+            },
+          });
+          if (replayConfig.injectCorrelation) {
+            const pw = await getPwAiModule();
+            if (pw) {
+              const page = await pw
+                .getPageForTargetId({ cdpUrl: profileCtx.profile.cdpUrl, targetId: tab.targetId })
+                .catch(() => null);
+              if (page) {
+                await applyReplayBootstrapToPage({ page, bootstrap: replayBootstrap }).catch(
+                  () => undefined,
+                );
+                await ensureReplayCaptureForPage({
+                  page,
+                  profileName: profileCtx.profile.name,
+                  targetId: tab.targetId,
+                }).catch(() => undefined);
+              }
+            }
+          }
+        }
         res.json(tab);
       },
     });

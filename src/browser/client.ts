@@ -1,4 +1,6 @@
 import { fetchBrowserJson } from "./client-fetch.js";
+import type { BrowserReplayRequestContext } from "./replay.js";
+import { attachReplayContextToBody, attachReplayContextToQuery } from "./replay.request.js";
 
 export type BrowserTransport = "cdp" | "chrome-mcp";
 
@@ -23,6 +25,18 @@ export type BrowserStatus = {
   noSandbox?: boolean;
   executablePath?: string | null;
   attachOnly: boolean;
+  replay?: {
+    enabled: boolean;
+    extensionPath?: string | null;
+    injectCorrelation: boolean;
+    persistMappings: boolean;
+    sessionKey?: string | null;
+    runId?: string | null;
+    replaySessionId?: string | null;
+    replayUrl?: string | null;
+    provider?: string | null;
+    traceId?: string | null;
+  };
 };
 
 export type ProfileStatus = {
@@ -106,14 +120,34 @@ function withBaseUrl(baseUrl: string | undefined, path: string): string {
   return `${trimmed.replace(/\/$/, "")}${path}`;
 }
 
+function withReplaySearchParams(
+  search: URLSearchParams,
+  replayContext?: BrowserReplayRequestContext | null,
+) {
+  const replayQuery = attachReplayContextToQuery(undefined, replayContext);
+  for (const [key, value] of Object.entries(replayQuery ?? {})) {
+    if (value !== undefined) {
+      search.set(key, String(value));
+    }
+  }
+}
+
 export async function browserStatus(
   baseUrl?: string,
-  opts?: { profile?: string },
+  opts?: { profile?: string; replayContext?: BrowserReplayRequestContext | null },
 ): Promise<BrowserStatus> {
-  const q = buildProfileQuery(opts?.profile);
-  return await fetchBrowserJson<BrowserStatus>(withBaseUrl(baseUrl, `/${q}`), {
-    timeoutMs: 1500,
-  });
+  const search = new URLSearchParams();
+  if (opts?.profile) {
+    search.set("profile", opts.profile);
+  }
+  withReplaySearchParams(search, opts?.replayContext);
+  const suffix = search.toString();
+  return await fetchBrowserJson<BrowserStatus>(
+    withBaseUrl(baseUrl, `/${suffix ? `?${suffix}` : ""}`),
+    {
+      timeoutMs: 1500,
+    },
+  );
 }
 
 export async function browserProfiles(baseUrl?: string): Promise<ProfileStatus[]> {
@@ -215,11 +249,16 @@ export async function browserDeleteProfile(
 
 export async function browserTabs(
   baseUrl?: string,
-  opts?: { profile?: string },
+  opts?: { profile?: string; replayContext?: BrowserReplayRequestContext | null },
 ): Promise<BrowserTab[]> {
-  const q = buildProfileQuery(opts?.profile);
+  const search = new URLSearchParams();
+  if (opts?.profile) {
+    search.set("profile", opts.profile);
+  }
+  withReplaySearchParams(search, opts?.replayContext);
+  const suffix = search.toString();
   const res = await fetchBrowserJson<{ running: boolean; tabs: BrowserTab[] }>(
-    withBaseUrl(baseUrl, `/tabs${q}`),
+    withBaseUrl(baseUrl, `/tabs${suffix ? `?${suffix}` : ""}`),
     { timeoutMs: 3000 },
   );
   return res.tabs ?? [];
@@ -228,13 +267,13 @@ export async function browserTabs(
 export async function browserOpenTab(
   baseUrl: string | undefined,
   url: string,
-  opts?: { profile?: string },
+  opts?: { profile?: string; replayContext?: BrowserReplayRequestContext | null },
 ): Promise<BrowserTab> {
   const q = buildProfileQuery(opts?.profile);
   return await fetchBrowserJson<BrowserTab>(withBaseUrl(baseUrl, `/tabs/open${q}`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify(attachReplayContextToBody({ url }, opts?.replayContext)),
     timeoutMs: 15000,
   });
 }
@@ -301,6 +340,7 @@ export async function browserSnapshot(
     labels?: boolean;
     mode?: "efficient";
     profile?: string;
+    replayContext?: BrowserReplayRequestContext | null;
   },
 ): Promise<SnapshotResult> {
   const q = new URLSearchParams();
@@ -343,6 +383,7 @@ export async function browserSnapshot(
   if (opts.profile) {
     q.set("profile", opts.profile);
   }
+  withReplaySearchParams(q, opts.replayContext);
   return await fetchBrowserJson<SnapshotResult>(withBaseUrl(baseUrl, `/snapshot?${q.toString()}`), {
     timeoutMs: 20000,
   });
