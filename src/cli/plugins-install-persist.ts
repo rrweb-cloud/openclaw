@@ -12,6 +12,23 @@ import {
   logSlotWarnings,
 } from "./plugins-command-helpers.js";
 
+function logPluginPostInstallNotes(pluginId: string): void {
+  if (pluginId !== "rrweb-replay") {
+    return;
+  }
+  defaultRuntime.log("");
+  defaultRuntime.log("Next step: add your rrweb public key to OpenClaw config.");
+  defaultRuntime.log("");
+  defaultRuntime.log("plugins:");
+  defaultRuntime.log("  entries:");
+  defaultRuntime.log("    rrweb-replay:");
+  defaultRuntime.log("      enabled: true");
+  defaultRuntime.log("      publicKey: pk_live_your_public_key");
+  defaultRuntime.log("      extensionMode: bundled");
+  defaultRuntime.log("");
+  defaultRuntime.log("serverUrl already defaults to https://api.rrwebcloud.com.");
+}
+
 export async function persistPluginInstall(params: {
   config: OpenClawConfig;
   pluginId: string;
@@ -32,6 +49,7 @@ export async function persistPluginInstall(params: {
     defaultRuntime.log(theme.warn(params.warningMessage));
   }
   defaultRuntime.log(params.successMessage ?? `Installed plugin: ${params.pluginId}`);
+  logPluginPostInstallNotes(params.pluginId);
   defaultRuntime.log("Restart the gateway to load plugins.");
   return next;
 }
