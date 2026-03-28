@@ -141,7 +141,73 @@ describe("rrweb replay browser integration", () => {
     expect(result?.details).toMatchObject({
       ok: true,
       enabled: true,
+      compatibilityMode: "modern",
       replayServerUrl: "https://api.rrwebcloud.com",
     });
+  });
+
+  it("registers and unregisters the managed browser extension on modern hosts", async () => {
+    const extensionDir = fs.mkdtempSync(path.join(os.tmpdir(), "rrweb-replay-service-ext-"));
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "rrweb-replay-service-state-"));
+    let registeredService:
+      | {
+          start: (ctx: {
+            logger: { info: (...args: unknown[]) => void; warn: (...args: unknown[]) => void };
+          }) => Promise<void>;
+          stop: () => Promise<void>;
+        }
+      | undefined;
+
+    entry.register(
+      createTestPluginApi({
+        id: "rrweb-replay",
+        name: "rrweb-replay",
+        source: "test",
+        config: {
+          browser: {
+            profiles: {
+              openclaw: {
+                cdpPort: 18800,
+              },
+            },
+          },
+        } as never,
+        pluginConfig: {
+          enabled: true,
+          publicKey: "pk_test_123",
+          extensionMode: "external-path",
+          extensionPath: extensionDir,
+          browserProfiles: ["openclaw"],
+        },
+        runtime: {
+          state: {
+            resolveStateDir: () => stateDir,
+          },
+        } as never,
+        rootDir: extensionDir,
+        registerService(service) {
+          registeredService = service as never;
+        },
+      }),
+    );
+
+    expect(registeredService).toBeTruthy();
+    await registeredService?.start({
+      logger: { info() {}, warn() {} },
+    });
+
+    expect(
+      resolveManagedBrowserExtensionPaths({
+        profileName: "openclaw",
+      }),
+    ).toContain(path.resolve(extensionDir));
+
+    await registeredService?.stop();
+
+    expect(
+      resolveManagedBrowserExtensionPaths({
+        profileName: "openclaw",
+      }),
+    ).not.toContain(path.resolve(extensionDir));
   });
 });

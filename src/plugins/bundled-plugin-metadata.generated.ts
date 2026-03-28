@@ -2681,13 +2681,13 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
   },
   {
     dirName: "rrweb-replay",
-    idHint: "rrweb-replay",
+    idHint: "openclaw-session-recording",
     source: {
       source: "./index.ts",
       built: "index.js",
     },
     packageName: "@rrwebcloud/openclaw-session-recording",
-    packageVersion: "2026.3.28",
+    packageVersion: "2026.3.28-1",
     packageDescription: "OpenClaw rrweb replay plugin",
     packageManifest: {
       extensions: ["./index.ts"],
@@ -2696,9 +2696,6 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
         localPath: "extensions/rrweb-replay",
         defaultChoice: "npm",
         minHostVersion: ">=2026.3.13",
-      },
-      release: {
-        publishToNpm: true,
       },
     },
     manifest: {

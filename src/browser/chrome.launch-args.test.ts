@@ -62,6 +62,111 @@ describe("browser chrome launch args", () => {
     }
   });
 
+  it("dedupes configured and runtime-managed extension paths", () => {
+    registerManagedBrowserExtensions({
+      sourceId: "test-runtime",
+      profiles: [" openclaw ", "openclaw"],
+      extensionPaths: ["/tmp/shared-extension", "/tmp/shared-extension"],
+    });
+    try {
+      const args = buildOpenClawChromeLaunchArgs({
+        resolved: {
+          enabled: true,
+          controlPort: 18791,
+          cdpProtocol: "http",
+          cdpHost: "127.0.0.1",
+          cdpIsLoopback: true,
+          cdpPortRangeStart: 18800,
+          cdpPortRangeEnd: 18810,
+          evaluateEnabled: false,
+          remoteCdpTimeoutMs: 1500,
+          remoteCdpHandshakeTimeoutMs: 3000,
+          extraArgs: [],
+          color: "#FF4500",
+          headless: false,
+          noSandbox: false,
+          attachOnly: false,
+          ssrfPolicy: { allowPrivateNetwork: true },
+          defaultProfile: "openclaw",
+          profiles: {
+            openclaw: { cdpPort: 18800, color: "#FF4500" },
+          },
+        },
+        profile: {
+          name: "openclaw",
+          cdpUrl: "http://127.0.0.1:18800",
+          cdpPort: 18800,
+          cdpHost: "127.0.0.1",
+          cdpIsLoopback: true,
+          extensions: ["/tmp/shared-extension", "/tmp/shared-extension"],
+          color: "#FF4500",
+          driver: "openclaw",
+          attachOnly: false,
+        },
+        userDataDir: "/tmp/openclaw-test-user-data",
+      });
+
+      expect(args).toContain("--disable-extensions-except=/tmp/shared-extension");
+      expect(args).toContain("--load-extension=/tmp/shared-extension");
+    } finally {
+      unregisterManagedBrowserExtensions("test-runtime");
+    }
+  });
+
+  it("ignores runtime-managed extensions for other profiles", () => {
+    registerManagedBrowserExtensions({
+      sourceId: "test-runtime",
+      profiles: ["other-profile"],
+      extensionPaths: ["/tmp/runtime-extension"],
+    });
+    try {
+      const args = buildOpenClawChromeLaunchArgs({
+        resolved: {
+          enabled: true,
+          controlPort: 18791,
+          cdpProtocol: "http",
+          cdpHost: "127.0.0.1",
+          cdpIsLoopback: true,
+          cdpPortRangeStart: 18800,
+          cdpPortRangeEnd: 18810,
+          evaluateEnabled: false,
+          remoteCdpTimeoutMs: 1500,
+          remoteCdpHandshakeTimeoutMs: 3000,
+          extraArgs: [],
+          color: "#FF4500",
+          headless: false,
+          noSandbox: false,
+          attachOnly: false,
+          ssrfPolicy: { allowPrivateNetwork: true },
+          defaultProfile: "openclaw",
+          profiles: {
+            openclaw: { cdpPort: 18800, color: "#FF4500" },
+          },
+        },
+        profile: {
+          name: "openclaw",
+          cdpUrl: "http://127.0.0.1:18800",
+          cdpPort: 18800,
+          cdpHost: "127.0.0.1",
+          cdpIsLoopback: true,
+          extensions: ["/tmp/config-extension"],
+          color: "#FF4500",
+          driver: "openclaw",
+          attachOnly: false,
+        },
+        userDataDir: "/tmp/openclaw-test-user-data",
+      });
+
+      expect(args).toContain("--disable-extensions-except=/tmp/config-extension");
+      expect(args).not.toContain(
+        "--disable-extensions-except=/tmp/config-extension,/tmp/runtime-extension",
+      );
+      expect(args).not.toContain("--load-extension=/tmp/config-extension,/tmp/runtime-extension");
+    } finally {
+      unregisterManagedBrowserExtensions("test-runtime");
+    }
+  });
+
   it("does not force an about:blank tab at startup", () => {
     const args = buildOpenClawChromeLaunchArgs({
       resolved: {

@@ -2,6 +2,10 @@ import { chromium } from "playwright-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as chromeModule from "./chrome.js";
 import { closePlaywrightBrowserConnection, listPagesViaPlaywright } from "./pw-session.js";
+import {
+  clearManagedBrowserReplayContext,
+  setManagedBrowserReplayContext,
+} from "./runtime-registry.js";
 
 const connectOverCdpSpy = vi.spyOn(chromium, "connectOverCDP");
 const getChromeWebSocketUrlSpy = vi.spyOn(chromeModule, "getChromeWebSocketUrl");
@@ -9,21 +13,27 @@ const getChromeWebSocketUrlSpy = vi.spyOn(chromeModule, "getChromeWebSocketUrl")
 type BrowserMockBundle = {
   browser: import("playwright-core").Browser;
   browserClose: ReturnType<typeof vi.fn>;
+  contextAddInitScript: ReturnType<typeof vi.fn>;
+  pageEvaluate: ReturnType<typeof vi.fn>;
 };
 
 function makeBrowser(targetId: string, url: string): BrowserMockBundle {
   let context: import("playwright-core").BrowserContext;
   const browserClose = vi.fn(async () => {});
+  const pageEvaluate = vi.fn(async () => {});
   const page = {
     on: vi.fn(),
     context: () => context,
     title: vi.fn(async () => `title:${targetId}`),
     url: vi.fn(() => url),
+    evaluate: pageEvaluate,
   } as unknown as import("playwright-core").Page;
 
+  const contextAddInitScript = vi.fn(async () => {});
   context = {
     pages: () => [page],
     on: vi.fn(),
+    addInitScript: contextAddInitScript,
     newCDPSession: vi.fn(async () => ({
       send: vi.fn(async (method: string) =>
         method === "Target.getTargetInfo" ? { targetInfo: { targetId } } : {},
@@ -39,12 +49,13 @@ function makeBrowser(targetId: string, url: string): BrowserMockBundle {
     close: browserClose,
   } as unknown as import("playwright-core").Browser;
 
-  return { browser, browserClose };
+  return { browser, browserClose, contextAddInitScript, pageEvaluate };
 }
 
 afterEach(async () => {
   connectOverCdpSpy.mockReset();
   getChromeWebSocketUrlSpy.mockReset();
+  clearManagedBrowserReplayContext("http://127.0.0.1:9222");
   await closePlaywrightBrowserConnection().catch(() => {});
 });
 
@@ -115,5 +126,43 @@ describe("pw-session connection scoping", () => {
 
     expect(browserA.browserClose).toHaveBeenCalledTimes(1);
     expect(browserB.browserClose).not.toHaveBeenCalled();
+  });
+
+  it("applies managed replay context to existing browser contexts on connect", async () => {
+    const browser = makeBrowser("A", "https://a.example");
+
+    setManagedBrowserReplayContext({
+      cdpUrl: "http://127.0.0.1:9222/",
+      profile: "openclaw",
+      sessionKey: "session-key-1",
+      replaySessionId: "replay-session-1",
+      replayUrl: "https://replay.example/session-1",
+      replayServerUrl: "https://api.rrwebcloud.com",
+      updatedAt: "2026-03-28T13:00:00.000Z",
+    });
+
+    connectOverCdpSpy.mockResolvedValue(browser.browser as never);
+    getChromeWebSocketUrlSpy.mockResolvedValue(null);
+
+    await listPagesViaPlaywright({ cdpUrl: "http://127.0.0.1:9222" });
+
+    expect(browser.contextAddInitScript).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        replaySessionId: "replay-session-1",
+        replayUrl: "https://replay.example/session-1",
+        replayServerUrl: "https://api.rrwebcloud.com",
+        sessionKey: "session-key-1",
+        profile: "openclaw",
+      }),
+    );
+    expect(browser.pageEvaluate).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        replaySessionId: "replay-session-1",
+        replayUrl: "https://replay.example/session-1",
+        sessionKey: "session-key-1",
+      }),
+    );
   });
 });

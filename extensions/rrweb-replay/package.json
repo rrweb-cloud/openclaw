@@ -1,9 +1,8 @@
 {
   "name": "@rrwebcloud/openclaw-session-recording",
-  "version": "2026.3.28",
+  "version": "2026.3.28-1",
   "description": "OpenClaw rrweb replay plugin",
   "license": "MIT",
-  "type": "module",
   "files": [
     ".codex-plugin/",
     "README.md",
@@ -12,6 +11,10 @@
     "openclaw.plugin.json",
     "skills/"
   ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@sinclair/typebox": "0.34.48"
   },
@@ -26,11 +29,10 @@
       "optional": true
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
   "openclaw": {
-    "extensions": ["./index.ts"],
+    "extensions": [
+      "./index.ts"
+    ],
     "install": {
       "npmSpec": "@rrwebcloud/openclaw-session-recording",
       "localPath": "extensions/rrweb-replay",
