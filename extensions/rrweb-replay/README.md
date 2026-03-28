@@ -8,6 +8,14 @@ Portable rrweb replay plugin for OpenClaw-managed browsers.
 openclaw plugins install @rrwebcloud/openclaw-session-recording
 ```
 
+If you are working from this repository checkout instead of the published
+package, use:
+
+```bash
+openclaw plugins install -l ./extensions/rrweb-replay
+openclaw plugins install -l ./extensions/diagnostics-otel
+```
+
 ## Minimal config
 
 ```yaml
@@ -29,3 +37,4 @@ plugins:
 - the browser extension is optional for the runtime uploader path and is only needed when you specifically want extension-side behavior
 - the plugin targets managed Chromium browser profiles such as `openclaw`
 - `replay_session_info` exposes the active replay metadata
+- When `diagnostics-otel` is enabled, replay-aware spans include `openclaw.replay.*` attributes. See [Logging](../../docs/logging.md).
