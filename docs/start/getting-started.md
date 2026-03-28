@@ -95,7 +95,7 @@ Need to install Node? See [Node setup](/install/node).
     WhatsApp, Telegram, Discord, iMessage, and more.
   </Card>
   <Card title="Add session replay" href="/plugins">
-    Install the `rrweb-replay` plugin and set `publicKey: public_key_rr_...` to capture managed browser sessions in rrwebcloud.
+    Install the `rrweb-replay` plugin and set `publicKey: public_key_rr_...` to capture managed browser sessions in rrwebcloud. Enable `diagnostics-otel` if you also want replay metadata on traces.
   </Card>
   <Card title="Pairing and safety" href="/channels/pairing" icon="shield">
     Control who can message your agent.

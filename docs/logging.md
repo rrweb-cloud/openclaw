@@ -231,6 +231,12 @@ Notes:
 Diagnostics can be exported via the `diagnostics-otel` plugin (OTLP/HTTP). This
 works with any OpenTelemetry collector/backend that accepts OTLP/HTTP.
 
+For a local checkout, install the plugin with:
+
+```bash
+openclaw plugins install -l ./extensions/diagnostics-otel
+```
+
 ```json
 {
   "plugins": {
@@ -261,7 +267,7 @@ works with any OpenTelemetry collector/backend that accepts OTLP/HTTP.
 Notes:
 
 - You can also enable the plugin with `openclaw plugins enable diagnostics-otel`.
-- `protocol` currently supports `http/protobuf` only. `grpc` is ignored.
+- `protocol` supports `http/protobuf` and `http/json`. `grpc` is ignored.
 - Metrics include token usage, cost, context size, run duration, and message-flow
   counters/histograms (webhooks, queueing, session state, queue depth/wait).
 - Traces/metrics can be toggled with `traces` / `metrics` (default: on). Traces
@@ -328,6 +334,19 @@ Queues + sessions:
 - `openclaw.session.stuck`
   - `openclaw.state`, `openclaw.ageMs`, `openclaw.queueDepth`,
     `openclaw.sessionKey`, `openclaw.sessionId`
+
+When `rrweb-replay` has a persisted mapping for the current session, the root
+run span and turn span also include:
+
+- `openclaw.replay.provider`
+- `openclaw.replay.session_id`
+- `openclaw.replay.url` when a preview URL is available
+
+For a local checkout, install the replay plugin with:
+
+```bash
+openclaw plugins install -l ./extensions/rrweb-replay
+```
 
 ### Sampling + flushing
 

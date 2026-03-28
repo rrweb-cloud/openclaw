@@ -2,6 +2,7 @@ export type {
   BrowserReplayContext,
   ManagedBrowserExtensionRegistration,
 } from "../browser/runtime-registry.js";
+export type { BrowserReplayMapping } from "../browser/replay.js";
 export {
   clearManagedBrowserReplayContext,
   clearManagedBrowserReplayContextsForSession,
@@ -11,3 +12,4 @@ export {
   setManagedBrowserReplayContext,
   unregisterManagedBrowserExtensions,
 } from "../browser/runtime-registry.js";
+export { getReplayMappingForSessionKeySync } from "../browser/replay.js";

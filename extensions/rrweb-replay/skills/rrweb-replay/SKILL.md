@@ -16,6 +16,7 @@ Operational notes:
 - The plugin targets OpenClaw-managed Chromium profiles such as `openclaw`
 - The streamlined OpenClaw path records rrweb events in the managed browser and uploads authenticated NDJSON from runtime code
 - The streamlined OpenClaw path only needs a public key; the rrweb Cloud API endpoint defaults to `https://api.rrwebcloud.com` and recording does not require a secret key
+- When `diagnostics-otel` is enabled, replay metadata is also exported on spans as `openclaw.replay.*`
 - Minimal config:
 
 ```yaml

@@ -131,6 +131,7 @@ vi.mock("../api.js", async () => {
   };
 });
 
+import { upsertReplayMapping } from "../../../src/browser/replay.js";
 import { emitDiagnosticEvent } from "../api.js";
 import { createDiagnosticsOtelService } from "./service.js";
 
@@ -247,6 +248,46 @@ describe("diagnostics-otel service – span hierarchy", () => {
     expect(attrs["gen_ai.usage.cache_creation.input_tokens"]).toBeUndefined();
     expect(attrs["gen_ai.usage.input_tokens"]).toBeUndefined();
     expect(attrs["gen_ai.usage.output_tokens"]).toBeUndefined();
+
+    await service.stop?.({} as never);
+  });
+
+  test("run.completed attaches replay metadata when a replay mapping exists", async () => {
+    const service = createService();
+    await service.start(createTestCtx());
+
+    await upsertReplayMapping({
+      sessionKey: "agent:main:main",
+      replaySessionId: "replay-123",
+      replayUrl: "https://rrwebcloud.example/sessions/replay-123",
+      provider: "rrwebcloud",
+      traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+    });
+
+    emitDiagnosticEvent({
+      type: "run.completed",
+      runId: "run-replay-1",
+      channel: "webchat",
+      provider: "openai",
+      model: "gpt-5.2",
+      sessionKey: "agent:main:main",
+      sessionId: "sess-001",
+      usage: {
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        promptTokens: 1,
+        total: 2,
+      },
+      durationMs: 50,
+    });
+
+    const spanCall = telemetryState.tracer.startSpan.mock.calls.at(-1);
+    const attrs = (spanCall?.[1] as any)?.attributes;
+    expect(attrs["openclaw.replay.session_id"]).toBe("replay-123");
+    expect(attrs["openclaw.replay.url"]).toBe("https://rrwebcloud.example/sessions/replay-123");
+    expect(attrs["openclaw.replay.provider"]).toBe("rrwebcloud");
 
     await service.stop?.({} as never);
   });

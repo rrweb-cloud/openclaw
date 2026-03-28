@@ -2687,7 +2687,7 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
       built: "index.js",
     },
     packageName: "@rrwebcloud/openclaw-session-recording",
-    packageVersion: "2026.3.28-2",
+    packageVersion: "2026.3.28-3",
     packageDescription: "OpenClaw rrweb replay plugin",
     packageManifest: {
       extensions: ["./index.ts"],

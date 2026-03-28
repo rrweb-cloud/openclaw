@@ -7,6 +7,7 @@ import {
   type Span,
   type Tracer,
 } from "@opentelemetry/api";
+import type { BrowserReplayMapping } from "openclaw/plugin-sdk/browser-runtime";
 import type { DiagnosticEventPayload } from "../api.js";
 import type { OtelMetricInstruments } from "./otel-metrics.js";
 import type { ActiveTrace, ResolvedCaptureContent, TraceHeaders } from "./otel-utils.js";
@@ -54,6 +55,7 @@ export interface OtelHandlerCtx {
     SESSION_ID: string;
   };
   getTraceHeadersRegistry: () => Map<string, TraceHeaders>;
+  getReplayMapping: (sessionKey?: string) => BrowserReplayMapping | null;
   redactText: (text: string) => string;
   // Maps childSessionKey → wrapper span context so subagent traces nest under the parent.
   subagentContexts: Map<
@@ -65,6 +67,31 @@ export interface OtelHandlerCtx {
       parentSessionKey?: string;
     }
   >;
+}
+
+function applyReplayAttributes(
+  target: { setAttribute(key: string, value: string): void },
+  replay: BrowserReplayMapping | null,
+) {
+  if (!replay) {
+    return;
+  }
+  target.setAttribute("openclaw.replay.provider", replay.provider);
+  target.setAttribute("openclaw.replay.session_id", replay.replaySessionId);
+  if (replay.replayUrl) {
+    target.setAttribute("openclaw.replay.url", replay.replayUrl);
+  }
+}
+
+function buildReplayAttributes(replay: BrowserReplayMapping | null): Record<string, string> {
+  if (!replay) {
+    return {};
+  }
+  return {
+    "openclaw.replay.provider": replay.provider,
+    "openclaw.replay.session_id": replay.replaySessionId,
+    ...(replay.replayUrl ? { "openclaw.replay.url": replay.replayUrl } : {}),
+  };
 }
 
 export function recordRunCompleted(
@@ -126,8 +153,10 @@ export function recordRunCompleted(
   // Only put lightweight envelope attributes on the agent.turn span.
   // gen_ai.* inference attributes (model, messages, tokens, etc.) belong
   // exclusively on the child chat spans created by recordModelInference.
+  const replay = hctx.getReplayMapping(evt.sessionKey);
   const turnAttrs: Record<string, string | number | string[]> = {
     ...attrs,
+    ...buildReplayAttributes(replay),
     "openclaw.runId": evt.runId,
     "openclaw.sessionKey": evt.sessionKey ?? "",
     "openclaw.sessionId": evt.sessionId ?? "",
@@ -178,6 +207,7 @@ export function recordRunCompleted(
   const finalRunSpan =
     runSpan ??
     hctx.spanWithDuration(fallbackSpanName, turnAttrs, evt.durationMs, SpanKind.INTERNAL);
+  applyReplayAttributes(finalRunSpan, replay);
 
   if (evt.error) {
     finalRunSpan.setStatus({ code: SpanStatusCode.ERROR, message: evt.error });
@@ -601,6 +631,7 @@ export function recordMessageProcessed(
   const sessionKey = evt.sessionKey;
   const activeTrace = sessionKey ? hctx.activeTraces.get(sessionKey) : null;
   if (activeTrace) {
+    applyReplayAttributes(activeTrace.span, hctx.getReplayMapping(sessionKey));
     activeTrace.span.setAttribute("openclaw.outcome", evt.outcome ?? "unknown");
     if (typeof evt.durationMs === "number") {
       activeTrace.span.setAttribute("openclaw.durationMs", evt.durationMs);
