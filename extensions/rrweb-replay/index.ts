@@ -44,6 +44,7 @@ type ReplayStateStore = {
 };
 
 const RRWEB_PLUGIN_ID = "rrweb-replay";
+const DEFAULT_RRWEB_API_BASE_URL = "https://api.rrwebcloud.com";
 
 const rrwebReplayConfigSchema = {
   parse(value: unknown): RrwebReplayConfig {
@@ -65,7 +66,7 @@ const rrwebReplayConfigSchema = {
     };
     return {
       enabled: raw.enabled !== false,
-      serverUrl: readOptional("serverUrl"),
+      serverUrl: readOptional("serverUrl") ?? DEFAULT_RRWEB_API_BASE_URL,
       publicKey: readOptional("publicKey"),
       secretKey: readOptional("secretKey"),
       publicKeyEnvVar: readOptional("publicKeyEnvVar"),
@@ -79,12 +80,23 @@ const rrwebReplayConfigSchema = {
   uiHints: {
     serverUrl: {
       label: "Replay Server URL",
-      placeholder: "https://rrwebcloud.example.com",
+      placeholder: DEFAULT_RRWEB_API_BASE_URL,
+      advanced: true,
+      help: "Optional. Defaults to the rrweb Cloud API endpoint used by the bundled browser replay flow.",
     },
     publicKey: { label: "Public Key", sensitive: true },
-    secretKey: { label: "Secret Key", sensitive: true },
+    secretKey: {
+      label: "Secret Key",
+      sensitive: true,
+      advanced: true,
+      help: "Optional. Reserved for future server-side upload flows and not required for the bundled browser bootstrap.",
+    },
     publicKeyEnvVar: { label: "Public Key Env Var", advanced: true },
-    secretKeyEnvVar: { label: "Secret Key Env Var", advanced: true },
+    secretKeyEnvVar: {
+      label: "Secret Key Env Var",
+      advanced: true,
+      help: "Optional. Only needed when a future rrweb upload path requires a secret key.",
+    },
     extensionMode: { label: "Extension Mode" },
     extensionPath: { label: "External Extension Path", advanced: true },
     browserProfiles: { label: "Browser Profiles" },
@@ -212,14 +224,11 @@ function describeReplayAvailability(params: {
     value: params.config.publicKey,
     envVarName: params.config.publicKeyEnvVar,
   });
-  const secretKey = resolveConfiguredSecret({
-    value: params.config.secretKey,
-    envVarName: params.config.secretKeyEnvVar,
-  });
-  if (!publicKey || !secretKey) {
+  if (!publicKey) {
     return {
       enabled: false,
-      reason: "Replay keys are not configured. Set publicKey/secretKey or their env var names.",
+      reason:
+        "Replay public key is not configured. Set publicKey or publicKeyEnvVar. The API endpoint already defaults to rrweb Cloud, and secretKey is optional for the bundled browser bootstrap.",
     };
   }
   return { enabled: true };

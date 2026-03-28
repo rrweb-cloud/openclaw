@@ -2741,8 +2741,9 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
       uiHints: {
         serverUrl: {
           label: "Replay Server URL",
-          help: "Base rrweb/rrwebcloud endpoint used for replay metadata.",
-          placeholder: "https://rrwebcloud.example.com",
+          help: "Optional. Defaults to the rrweb Cloud API endpoint used by the bundled browser replay flow.",
+          placeholder: "https://api.rrwebcloud.com",
+          advanced: true,
         },
         publicKey: {
           label: "Public Key",
@@ -2751,6 +2752,8 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
         secretKey: {
           label: "Secret Key",
           sensitive: true,
+          advanced: true,
+          help: "Optional. Reserved for future server-side upload flows and not required for the bundled browser bootstrap.",
         },
         publicKeyEnvVar: {
           label: "Public Key Env Var",
@@ -2759,6 +2762,7 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
         secretKeyEnvVar: {
           label: "Secret Key Env Var",
           advanced: true,
+          help: "Optional. Only needed when a future rrweb upload path requires a secret key.",
         },
         extensionMode: {
           label: "Extension Mode",

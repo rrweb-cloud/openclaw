@@ -9,6 +9,7 @@ import {
   resolveManagedBrowserExtensionPaths,
   unregisterManagedBrowserExtensions,
 } from "../../src/browser/runtime-registry.js";
+import { createTestPluginApi } from "../../test/helpers/extensions/plugin-api.js";
 import entry from "./index.js";
 
 describe("rrweb replay browser integration", () => {
@@ -82,6 +83,65 @@ describe("rrweb replay browser integration", () => {
     expect(registerTool).toHaveBeenCalledWith(expect.any(Function), {
       name: "replay_session_info",
       optional: true,
+    });
+  });
+
+  it("enables replay with only a public key configured", async () => {
+    type RegisteredTool = {
+      execute?: (toolCallId: string, params: Record<string, unknown>) => Promise<unknown>;
+    };
+
+    const extensionDir = fs.mkdtempSync(path.join(os.tmpdir(), "rrweb-replay-plugin-ext-"));
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "rrweb-replay-plugin-state-"));
+    let registeredToolFactory:
+      | ((ctx: { sessionKey?: string; sessionId?: string }) => RegisteredTool | null | undefined)
+      | undefined;
+
+    entry.register(
+      createTestPluginApi({
+        id: "rrweb-replay",
+        name: "rrweb-replay",
+        source: "test",
+        config: {
+          browser: {
+            profiles: {
+              openclaw: {
+                cdpPort: 18800,
+              },
+            },
+          },
+        } as never,
+        pluginConfig: {
+          enabled: true,
+          publicKey: "pk_test_123",
+          extensionMode: "external-path",
+          extensionPath: extensionDir,
+          browserProfiles: ["openclaw"],
+        },
+        runtime: {
+          state: {
+            resolveStateDir: () => stateDir,
+          },
+        } as never,
+        rootDir: extensionDir,
+        registerTool(tool: Parameters<typeof createTestPluginApi>[0]["registerTool"]) {
+          registeredToolFactory = typeof tool === "function" ? (tool as never) : () => tool;
+        },
+      }),
+    );
+
+    const tool = registeredToolFactory?.({
+      sessionKey: "session-key-1",
+      sessionId: "session-id-1",
+    }) as RegisteredTool | undefined;
+    const result = (await tool?.execute?.("tool-1", {})) as
+      | { details?: Record<string, unknown> }
+      | undefined;
+
+    expect(result?.details).toMatchObject({
+      ok: true,
+      enabled: true,
+      replayServerUrl: "https://api.rrwebcloud.com",
     });
   });
 });
